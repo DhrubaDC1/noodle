@@ -14,7 +14,8 @@ Personal thought-capture app: type a thought, an LLM tags it and links it to ear
 - Saving a thought must never wait on the network. LLM and embedding work goes through the background job queue.
 - Groq model IDs live in one config constant (the main model is a preview model and may be retired).
 - The Groq API key is read from `expo-secure-store`; never hardcode or commit keys.
-- Shared colours and components are in `src/ui.js`; reuse them.
+- Shared tokens (colours, type, spacing, stickers) live in `src/theme.js`; shared components in `src/ui.js`; icons in `src/icons.js` — reuse them.
+- **Every screen must match `docs/DESIGN.md` and the mockups in `docs/design/` — when code and design disagree, the design wins.**
 - Install packages with `npx expo install <pkg>`.
 
 ## Checks before calling a task done

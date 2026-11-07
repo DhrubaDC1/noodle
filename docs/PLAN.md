@@ -83,7 +83,7 @@ Mind map is always focused: topic view (bubbles sized by count) by default, or t
 ## Build phases
 
 - [x] **Phase 1: Capture and find.** Capture screen, list, detail, edit, done/archive/delete, FTS5 search, sync-ready schema.
-- [ ] **Phase 2: LLM analysis.** Settings with the Groq key, job queue, titles/types/tags, filters, reminder suggestions + notifications. Done when: a new thought is tagged within a few seconds, and offline thoughts catch up when back online.
+- [x] **Phase 2: LLM analysis.** Settings with the Groq key, job queue, titles/types/tags, filters, reminder suggestions + notifications. Done when: a new thought is tagged within a few seconds, and offline thoughts catch up when back online.
 - [ ] **Phase 3: Connections.** On-device embeddings, related thoughts with reasons, search by meaning, back-fill. Done when: "budgeting app idea" finds a thought that only says "track my spending".
 - [ ] **Phase 4: Mind map.** Topic and thought views, pan, zoom, tap to re-centre.
 - [ ] **Phase 5: Voice and share.** Mic + Groq Whisper; Android share target; iOS "Coming soon".
