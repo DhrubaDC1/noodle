@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Thought detail</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Figtree:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="{{vars}} width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: Figtree, system-ui, sans-serif">
+<header style="padding: 50px 8px 22px; background: var(--projectTint); border-radius: 0 0 32px 32px; flex-shrink: 0">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<a href="Capture.dc.html" style="min-height: 44px; display: flex; align-items: center; gap: 2px; padding: 0 8px; text-decoration: none; color: var(--text); font-size: 16px; font-weight: 700"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>Today</a>
+<button type="button" style="min-height: 44px; padding: 0 12px; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 16px; font-weight: 700; cursor: pointer">Edit</button>
+</div>
+<div style="padding: 10px 12px 0; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 11px 0 8px; border-radius: 13px; background: var(--project); color: #1E1B2E; font-size: 13px; font-weight: 700"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path></svg>Project</span><span style="font-size: 13px; font-weight: 600; color: var(--muted)">Today, 11:40 am</span></p>
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 32px; line-height: 36px; font-weight: 800; letter-spacing: -0.03em">Budgeting app idea</h1>
+</div>
+</header>
+<main style="flex: 1; min-height: 0; overflow: hidden; padding: 18px 20px 0; display: flex; flex-direction: column; gap: 14px">
+<p style="margin: 0; font-size: 17px; line-height: 26px">An app that reads my bKash SMS and sorts spending by category. Start with food and transport. Sketch the first screens by Friday.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 10px; background: var(--projectTint); color: var(--projectText); font-size: 13px; font-weight: 700">#side-project</span>
+<span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 10px; background: var(--projectTint); color: var(--projectText); font-size: 13px; font-weight: 700">#money</span>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 10px; border: 2px dashed var(--line); background: transparent; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer">+ tag</button>
+</div>
+<section aria-label="Reminder suggestion" style="padding: 14px; border-radius: 22px; background: var(--surface); border: 2px solid var(--ink); box-shadow: 0 4px 0 var(--shadow); display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; gap: 12px; align-items: center">
+<svg width="44" height="44" viewBox="0 0 40 40" aria-hidden="true" style="flex-shrink: 0"><g fill="none" style="stroke: var(--ink)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a5 5 0 0 1 7-5M32 12a5 5 0 0 0-7-5"></path><path d="M12 34l-2.5 3M28 34l2.5 3"></path></g><circle cx="20" cy="22" r="12" style="fill: var(--ideaTint); stroke: var(--ink)" stroke-width="2.2"></circle><path d="M20 15v7l5 3" fill="none" style="stroke: var(--ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<p style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; line-height: 22px; font-weight: 700">Remind you Friday, 6 pm?</p>
+<p style="margin: 0; font-size: 13px; line-height: 18px; color: var(--muted)">You wrote “by Friday”. That's 13 November.</p>
+</div>
+</div>
+<div style="display: flex; gap: 8px">
+<button type="button" style="flex: 1; height: 44px; border-radius: 14px; border: 0; background: var(--ink); color: var(--onInk); font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer">Remind me</button>
+<button type="button" style="flex: 1; height: 44px; border-radius: 14px; border: 0; background: var(--sunken); color: var(--text); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Not now</button>
+</div>
+</section>
+<section aria-labelledby="linked-heading" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="linked-heading" style="margin: 6px 2px 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 6px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="17" r="2.4"></circle><circle cx="19" cy="7" r="2.4"></circle><path d="M7.2 15.8c2.8-1.2 1.4-5.6 4.6-6.2s3.4 1.6 5.2-1"></path></svg>Linked thoughts <span style="font-family: Figtree, sans-serif; font-size: 13px; font-weight: 600; color: var(--muted)">3</span></h2>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+<li>
+<a href="MapThought.dc.html" style="display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 18px; background: var(--memoryTint); text-decoration: none; color: var(--text)">
+<span style="font-size: 12px; font-weight: 700; color: var(--memoryText)">Same project · Memory</span>
+<span style="font-size: 16px; line-height: 21px; font-weight: 700">Track where my salary goes</span>
+<span style="font-size: 13px; line-height: 18px; color: var(--muted)">Both are about seeing your spending clearly.</span>
+</a>
+</li>
+<li>
+<a href="MapThought.dc.html" style="display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 18px; background: var(--ideaTint); text-decoration: none; color: var(--text)">
+<span style="font-size: 12px; font-weight: 700; color: var(--ideaText)">Similar idea · Idea</span>
+<span style="font-size: 16px; line-height: 21px; font-weight: 700">Split bills with flatmates</span>
+<span style="font-size: 13px; line-height: 18px; color: var(--muted)">Another money app; could be one feature of this.</span>
+</a>
+</li>
+<li>
+<a href="MapThought.dc.html" style="display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 18px; background: var(--todoTint); text-decoration: none; color: var(--text)">
+<span style="font-size: 12px; font-weight: 700; color: var(--todoText)">Follow-up · To-do</span>
+<span style="font-size: 16px; line-height: 21px; font-weight: 700">Learn how bKash merchant APIs work</span>
+<span style="font-size: 13px; line-height: 18px; color: var(--muted)">Needed to read transactions without SMS.</span>
+</a>
+</li>
+</ul>
+</section>
+</main>
+<div style="margin: 0 16px 26px; padding: 6px; display: flex; gap: 4px; background: var(--surface); border: 2px solid var(--ink); border-radius: 26px; box-shadow: 0 4px 0 var(--shadow); flex-shrink: 0">
+<button type="button" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Done</button>
+<button type="button" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1"></rect><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"></path></svg>Archive</button>
+<button type="button" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="17" r="2.4"></circle><circle cx="19" cy="7" r="2.4"></circle><path d="M7.2 15.8c2.8-1.2 1.4-5.6 4.6-6.2s3.4 1.6 5.2-1"></path></svg>On map</button>
+<button type="button" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>Delete</button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var light = { bg: '#FFFBF5', surface: '#FFFFFF', sunken: '#F6EFE4', text: '#1E1B2E', muted: '#6A6478', line: '#EADFCF', ink: '#1E1B2E', onInk: '#FFFBF5', shadow: '#1E1B2E', idea: '#FFC53D', ideaTint: '#FFF1C7', ideaText: '#7A5200', project: '#9580FF', projectTint: '#EDE8FF', projectText: '#4B2FD6', todo: '#FF6B4A', todoTint: '#FFE3DB', todoText: '#B63212', memory: '#1FB89A', memoryTint: '#D5F5EC', memoryText: '#0B6E5B', question: '#FF5FA2', questionTint: '#FFE0EE', questionText: '#B01E62' };
+    var dark = { bg: '#16141F', surface: '#221F2E', sunken: '#2C2839', text: '#F6F2EA', muted: '#ABA4BA', line: '#3A3450', ink: '#F6F2EA', onInk: '#16141F', shadow: '#000000', idea: '#FFC53D', ideaTint: '#3A2F12', ideaText: '#FFD66B', project: '#9580FF', projectTint: '#2A2350', projectText: '#C2B5FF', todo: '#FF6B4A', todoTint: '#3E1F18', todoText: '#FF9A80', memory: '#1FB89A', memoryTint: '#12352E', memoryText: '#5FE0C2', question: '#FF5FA2', questionTint: '#3F1A2C', questionText: '#FF8FC0' };
+    var t = this.props.dark ? dark : light;
+    return { vars: Object.keys(t).map(function (k) { return '--' + k + ': ' + t[k]; }).join('; ') + ';' };
+  }
+}
+</script>
+</body>
+</html>

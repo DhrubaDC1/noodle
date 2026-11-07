@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Capture</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Figtree:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="{{vars}} width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: Figtree, system-ui, sans-serif">
+<header style="padding: 56px 20px 16px; display: flex; align-items: center; gap: 8px; flex-shrink: 0">
+<svg width="36" height="36" viewBox="0 0 40 40" aria-hidden="true"><path d="M6 26C6 14 15 14 15 22C15 30 25 30 25 20C25 12 34 10 34 18" fill="none" style="stroke: var(--ink)" stroke-width="3.2" stroke-linecap="round"></path><circle cx="6" cy="26" r="3.4" fill="#FFC53D" style="stroke: var(--bg)" stroke-width="1.5"></circle><circle cx="10.5" cy="16.5" r="3.4" fill="#FF6B4A" style="stroke: var(--bg)" stroke-width="1.5"></circle><circle cx="20" cy="27.8" r="3.4" fill="#1FB89A" style="stroke: var(--bg)" stroke-width="1.5"></circle><circle cx="29.5" cy="13" r="3.4" fill="#FF5FA2" style="stroke: var(--bg)" stroke-width="1.5"></circle><circle cx="34" cy="18" r="3.4" fill="#9580FF" style="stroke: var(--bg)" stroke-width="1.5"></circle></svg>
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 30px; line-height: 34px; font-weight: 800; letter-spacing: -0.04em">noodle</h1>
+<p style="margin: 0 0 0 auto; font-size: 13px; font-weight: 600; color: var(--muted)">Sat, 7 Nov</p>
+</header>
+<form style="margin: 0 16px; padding: 14px 14px 12px; background: var(--surface); border: 2px solid var(--ink); border-radius: 24px; box-shadow: 0 4px 0 var(--shadow); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0">
+<div style="position: relative; height: 72px">
+<label for="new-thought" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">New thought</label>
+<span aria-hidden="true" style="position: absolute; left: 4px; top: 2px; font-size: 18px; line-height: 25px; font-weight: 500; color: var(--muted)">What's on your noodle?</span>
+<textarea id="new-thought" style="position: absolute; inset: 0; box-sizing: border-box; width: 100%; height: 72px; border: 0; outline: none; resize: none; background: transparent; color: var(--text); font-family: inherit; font-size: 18px; line-height: 25px; padding: 2px 4px; margin: 0"></textarea>
+</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<button type="button" aria-label="Record a voice note" style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 22px; border: 0; padding: 0; background: var(--sunken); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></button>
+<span style="flex: 1; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted)">Noodle sorts it out for you</span>
+<button type="submit" style="height: 44px; padding: 0 18px 0 20px; border-radius: 16px; border: 0; background: var(--ink); color: var(--onInk); font-family: inherit; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer">Save<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"></path></svg></button>
+</div>
+</form>
+<section aria-labelledby="today-heading" style="flex: 1; min-height: 0; overflow: hidden; padding: 26px 16px 0; display: flex; flex-direction: column; gap: 10px">
+<h2 id="today-heading" style="margin: 0 4px 2px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.01em">Today <span style="font-family: Figtree, sans-serif; font-size: 13px; font-weight: 600; color: var(--muted)">3 thoughts</span></h2>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+<li>
+<a href="Thought.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 22px; border: 2px dashed var(--line); background: var(--surface); text-decoration: none; color: var(--text)">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--muted)"><span aria-hidden="true" style="display: flex; gap: 3px"><span style="width: 6px; height: 6px; border-radius: 3px; background: #FFC53D"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #9580FF"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF6B4A"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #1FB89A"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF5FA2"></span></span>Noodling on it…<span style="margin-left: auto; font-weight: 600">Just now</span></span>
+<span style="font-size: 16px; line-height: 22px; font-weight: 500">Ask Nadia whether the Sylhet trip is still on for December</span>
+</a>
+</li>
+<li>
+<a href="Thought.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 16px; border-radius: 22px; background: var(--projectTint); text-decoration: none; color: var(--text)">
+<span style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 8px; border-radius: 12px; background: var(--project); color: #1E1B2E; font-size: 12px; font-weight: 700"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path></svg>Project</span><span style="margin-left: auto; font-size: 12px; font-weight: 600; color: var(--muted)">11:40 am</span></span>
+<span style="font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 20px; line-height: 24px; font-weight: 700; letter-spacing: -0.015em">Budgeting app idea</span>
+<span style="font-size: 14px; line-height: 20px; color: var(--muted)">Reads my bKash SMS and sorts spending by category. Sketch the first screens by Friday.</span>
+<span style="display: flex; flex-wrap: wrap; gap: 6px"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 9px; background: var(--surface); color: var(--projectText); font-size: 12px; font-weight: 600">#side-project</span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 9px; background: var(--surface); color: var(--projectText); font-size: 12px; font-weight: 600">#money</span></span>
+</a>
+</li>
+<li>
+<a href="Thought.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 16px; border-radius: 22px; background: var(--todoTint); text-decoration: none; color: var(--text)">
+<span style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 8px; border-radius: 12px; background: var(--todo); color: #1E1B2E; font-size: 12px; font-weight: 700"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>To-do</span><span style="margin-left: auto; font-size: 12px; font-weight: 600; color: var(--muted)">9:05 am</span></span>
+<span style="font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 20px; line-height: 24px; font-weight: 700; letter-spacing: -0.015em">Renew passport</span>
+<span style="font-size: 14px; line-height: 20px; color: var(--muted)">Expires in March. Renew before booking anything abroad.</span>
+<span style="display: flex; flex-wrap: wrap; gap: 6px"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 9px; background: var(--surface); color: var(--todoText); font-size: 12px; font-weight: 600">#errands</span><span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 9px; background: var(--ink); color: var(--onInk); font-size: 12px; font-weight: 700"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>Mon 9 Nov, 10 am</span></span>
+</a>
+</li>
+<li>
+<a href="Thought.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 16px; border-radius: 22px; background: var(--ideaTint); text-decoration: none; color: var(--text)">
+<span style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 8px; border-radius: 12px; background: var(--idea); color: #1E1B2E; font-size: 12px; font-weight: 700"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3Z"></path></svg>Idea</span><span style="margin-left: auto; font-size: 12px; font-weight: 600; color: var(--muted)">8:20 am</span></span>
+<span style="font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 20px; line-height: 24px; font-weight: 700; letter-spacing: -0.015em">Weekend photo walk</span>
+<span style="font-size: 14px; line-height: 20px; color: var(--muted)">Old Dhaka at sunrise, only the 35mm lens.</span>
+</a>
+</li>
+</ul>
+</section>
+<nav aria-label="Main" style="margin: 0 16px 26px; padding: 6px; display: flex; gap: 4px; background: var(--surface); border: 2px solid var(--ink); border-radius: 26px; box-shadow: 0 4px 0 var(--shadow); flex-shrink: 0">
+<a href="Capture.dc.html" aria-current="page" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; background: var(--ink); color: var(--onInk); text-decoration: none; font-size: 11px; font-weight: 700"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9.5 9.5H5.5v-5Z"></path><path d="M3 21.5c1.2-.9 2.3-.9 3.5 0s2.3.9 3.5 0"></path></svg>Capture</a>
+<a href="Search.dc.html" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m20 20-4.8-4.8"></path><path d="M7.6 9.6c.6-1.5 2-2.3 3.6-2.1"></path></svg>Search</a>
+<a href="MapTopics.dc.html" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="17" r="2.4"></circle><circle cx="19" cy="7" r="2.4"></circle><circle cx="17" cy="19" r="1.6"></circle><path d="M7.2 15.8c2.8-1.2 1.4-5.6 4.6-6.2s3.4 1.6 5.2-1"></path></svg>Map</a>
+<a href="Settings.dc.html" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2.2"></circle><circle cx="9" cy="17" r="2.2"></circle></svg>Settings</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var light = { bg: '#FFFBF5', surface: '#FFFFFF', sunken: '#F6EFE4', text: '#1E1B2E', muted: '#6A6478', line: '#EADFCF', ink: '#1E1B2E', onInk: '#FFFBF5', shadow: '#1E1B2E', idea: '#FFC53D', ideaTint: '#FFF1C7', ideaText: '#7A5200', project: '#9580FF', projectTint: '#EDE8FF', projectText: '#4B2FD6', todo: '#FF6B4A', todoTint: '#FFE3DB', todoText: '#B63212', memory: '#1FB89A', memoryTint: '#D5F5EC', memoryText: '#0B6E5B', question: '#FF5FA2', questionTint: '#FFE0EE', questionText: '#B01E62' };
+    var dark = { bg: '#16141F', surface: '#221F2E', sunken: '#2C2839', text: '#F6F2EA', muted: '#ABA4BA', line: '#3A3450', ink: '#F6F2EA', onInk: '#16141F', shadow: '#000000', idea: '#FFC53D', ideaTint: '#3A2F12', ideaText: '#FFD66B', project: '#9580FF', projectTint: '#2A2350', projectText: '#C2B5FF', todo: '#FF6B4A', todoTint: '#3E1F18', todoText: '#FF9A80', memory: '#1FB89A', memoryTint: '#12352E', memoryText: '#5FE0C2', question: '#FF5FA2', questionTint: '#3F1A2C', questionText: '#FF8FC0' };
+    var t = this.props.dark ? dark : light;
+    return { vars: Object.keys(t).map(function (k) { return '--' + k + ': ' + t[k]; }).join('; ') + ';' };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Map: one thought</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Figtree:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="{{vars}} width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: Figtree, system-ui, sans-serif">
+<header style="padding: 56px 20px 0; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 34px; line-height: 38px; font-weight: 800; letter-spacing: -0.03em">Map</h1>
+<div role="group" aria-label="Map view" style="display: flex; padding: 3px; border-radius: 15px; border: 2px solid var(--ink); background: var(--surface)">
+<a href="MapTopics.dc.html" style="min-height: 38px; padding: 0 14px; display: flex; align-items: center; border-radius: 11px; color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none">Topics</a>
+<a href="MapThought.dc.html" aria-current="page" style="min-height: 38px; padding: 0 14px; display: flex; align-items: center; border-radius: 11px; background: var(--ink); color: var(--onInk); font-size: 14px; font-weight: 700; text-decoration: none">Thought</a>
+</div>
+</div>
+<p style="margin: 0; font-size: 13px; font-weight: 500; color: var(--muted)">Tap any thought to put it in the middle</p>
+</header>
+<div style="position: relative; flex: 1; min-height: 0; overflow: hidden">
+<svg width="390" height="630" viewBox="0 0 390 630" aria-hidden="true" style="position: absolute; left: 0; top: 0; fill: none; stroke-linecap: round">
+<g style="stroke: var(--ink)" stroke-width="2.5">
+<path d="M195 300C173 244 122 206 100 150"></path>
+<path d="M195 300C237 271 253 219 295 190"></path>
+<path d="M195 300C183 357 207 413 195 470"></path>
+</g>
+<g style="stroke: var(--line)" stroke-width="2.5" stroke-dasharray="1 7">
+<path d="M100 150C110 114 85 81 95 45"></path>
+<path d="M295 190C309 150 286 110 300 70"></path>
+<path d="M195 470C183 507 207 543 195 580"></path>
+</g>
+</svg>
+<a href="Thought.dc.html" style="position: absolute; left: 25px; top: 21px; width: 140px; height: 48px; box-sizing: border-box; padding: 6px 12px; border-radius: 14px; border: 2px dashed var(--project); background: var(--bg); color: var(--projectText); font-size: 12px; line-height: 16px; font-weight: 700; text-decoration: none; display: flex; align-items: center">Monthly budget spreadsheet</a>
+<a href="Thought.dc.html" style="position: absolute; left: 230px; top: 46px; width: 140px; height: 48px; box-sizing: border-box; padding: 6px 12px; border-radius: 14px; border: 2px dashed var(--memory); background: var(--bg); color: var(--memoryText); font-size: 12px; line-height: 16px; font-weight: 700; text-decoration: none; display: flex; align-items: center">Flat expenses group chat</a>
+<a href="Thought.dc.html" style="position: absolute; left: 28px; top: 120px; width: 144px; height: 60px; box-sizing: border-box; padding: 8px 12px; border-radius: 16px; border: 2.5px solid var(--memory); background: var(--memoryTint); color: var(--text); text-decoration: none; display: flex; flex-direction: column; justify-content: center; gap: 1px"><span style="font-size: 11px; font-weight: 700; color: var(--memoryText)">Memory</span><span style="font-size: 13px; line-height: 17px; font-weight: 700">Track where my salary goes</span></a>
+<a href="Thought.dc.html" style="position: absolute; left: 223px; top: 160px; width: 144px; height: 60px; box-sizing: border-box; padding: 8px 12px; border-radius: 16px; border: 2.5px solid var(--idea); background: var(--ideaTint); color: var(--text); text-decoration: none; display: flex; flex-direction: column; justify-content: center; gap: 1px"><span style="font-size: 11px; font-weight: 700; color: var(--ideaText)">Idea</span><span style="font-size: 13px; line-height: 17px; font-weight: 700">Split bills with flatmates</span></a>
+<a href="Thought.dc.html" style="position: absolute; left: 100px; top: 262px; width: 190px; height: 76px; box-sizing: border-box; padding: 10px 14px; border-radius: 20px; border: 2.5px solid var(--ink); box-shadow: 0 4px 0 var(--shadow); background: var(--project); color: #1E1B2E; text-decoration: none; display: flex; flex-direction: column; justify-content: center; gap: 1px"><span style="font-size: 12px; font-weight: 700">Project</span><span style="font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 18px; line-height: 22px; font-weight: 800; letter-spacing: -0.01em">Budgeting app idea</span></a>
+<a href="Thought.dc.html" style="position: absolute; left: 105px; top: 440px; width: 180px; height: 60px; box-sizing: border-box; padding: 8px 12px; border-radius: 16px; border: 2.5px solid var(--todo); background: var(--todoTint); color: var(--text); text-decoration: none; display: flex; flex-direction: column; justify-content: center; gap: 1px"><span style="font-size: 11px; font-weight: 700; color: var(--todoText)">To-do</span><span style="font-size: 13px; line-height: 17px; font-weight: 700">Learn how bKash APIs work</span></a>
+<a href="Thought.dc.html" style="position: absolute; left: 115px; top: 556px; width: 160px; height: 48px; box-sizing: border-box; padding: 6px 12px; border-radius: 14px; border: 2px dashed var(--question); background: var(--bg); color: var(--questionText); font-size: 12px; line-height: 16px; font-weight: 700; text-decoration: none; display: flex; align-items: center">Does Android allow reading SMS?</a>
+<span style="position: absolute; left: 147px; top: 225px; transform: translate(-50%, -50%); padding: 3px 9px; border-radius: 10px; background: var(--ink); color: var(--onInk); font-size: 11px; font-weight: 700; white-space: nowrap">Same project</span>
+<span style="position: absolute; left: 247px; top: 245px; transform: translate(-50%, -50%); padding: 3px 9px; border-radius: 10px; background: var(--ink); color: var(--onInk); font-size: 11px; font-weight: 700; white-space: nowrap">Similar idea</span>
+<span style="position: absolute; left: 195px; top: 388px; transform: translate(-50%, -50%); padding: 3px 9px; border-radius: 10px; background: var(--ink); color: var(--onInk); font-size: 11px; font-weight: 700; white-space: nowrap">Follow-up</span>
+</div>
+<nav aria-label="Main" style="margin: 0 16px 26px; padding: 6px; display: flex; gap: 4px; background: var(--surface); border: 2px solid var(--ink); border-radius: 26px; box-shadow: 0 4px 0 var(--shadow); flex-shrink: 0">
+<a href="Capture.dc.html" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9.5 9.5H5.5v-5Z"></path><path d="M3 21.5c1.2-.9 2.3-.9 3.5 0s2.3.9 3.5 0"></path></svg>Capture</a>
+<a href="Search.dc.html" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m20 20-4.8-4.8"></path><path d="M7.6 9.6c.6-1.5 2-2.3 3.6-2.1"></path></svg>Search</a>
+<a href="MapTopics.dc.html" aria-current="page" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; background: var(--ink); color: var(--onInk); text-decoration: none; font-size: 11px; font-weight: 700"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="17" r="2.4"></circle><circle cx="19" cy="7" r="2.4"></circle><circle cx="17" cy="19" r="1.6"></circle><path d="M7.2 15.8c2.8-1.2 1.4-5.6 4.6-6.2s3.4 1.6 5.2-1"></path></svg>Map</a>
+<a href="Settings.dc.html" style="flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 20px; color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2.2"></circle><circle cx="9" cy="17" r="2.2"></circle></svg>Settings</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var light = { bg: '#FFFBF5', surface: '#FFFFFF', sunken: '#F6EFE4', text: '#1E1B2E', muted: '#6A6478', line: '#EADFCF', ink: '#1E1B2E', onInk: '#FFFBF5', shadow: '#1E1B2E', idea: '#FFC53D', ideaTint: '#FFF1C7', ideaText: '#7A5200', project: '#9580FF', projectTint: '#EDE8FF', projectText: '#4B2FD6', todo: '#FF6B4A', todoTint: '#FFE3DB', todoText: '#B63212', memory: '#1FB89A', memoryTint: '#D5F5EC', memoryText: '#0B6E5B', question: '#FF5FA2', questionTint: '#FFE0EE', questionText: '#B01E62' };
+    var dark = { bg: '#16141F', surface: '#221F2E', sunken: '#2C2839', text: '#F6F2EA', muted: '#ABA4BA', line: '#3A3450', ink: '#F6F2EA', onInk: '#16141F', shadow: '#000000', idea: '#FFC53D', ideaTint: '#3A2F12', ideaText: '#FFD66B', project: '#9580FF', projectTint: '#2A2350', projectText: '#C2B5FF', todo: '#FF6B4A', todoTint: '#3E1F18', todoText: '#FF9A80', memory: '#1FB89A', memoryTint: '#12352E', memoryText: '#5FE0C2', question: '#FF5FA2', questionTint: '#3F1A2C', questionText: '#FF8FC0' };
+    var t = this.props.dark ? dark : light;
+    return { vars: Object.keys(t).map(function (k) { return '--' + k + ': ' + t[k]; }).join('; ') + ';' };
+  }
+}
+</script>
+</body>
+</html>
