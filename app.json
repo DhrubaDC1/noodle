@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "thoughts",
+    "name": "Thoughts",
     "slug": "thoughts",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,6 +19,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "scheme": "thoughts",
+    "plugins": [
+      "expo-router",
+      "expo-sqlite"
+    ]
   }
 }
