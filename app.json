@@ -7,14 +7,20 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "deploymentTarget": "17.0",
+      "bundleIdentifier": "com.dhruba.noodle",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#1E1B2E",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "package": "com.dhruba.noodle"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -37,7 +43,26 @@
         }
       ],
       "expo-secure-store",
-      "expo-notifications"
-    ]
+      ["expo-notifications", { "enableRemoteNotifications": false }],
+      "react-native-blob-util",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "11d9bdbc-e83c-4fc0-ac62-ec9c23fc104e"
+      }
+    }
   }
 }

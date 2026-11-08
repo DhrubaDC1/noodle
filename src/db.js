@@ -1,7 +1,8 @@
 // All SQLite access lives here. Functions take the db so screens use useSQLiteContext()
 // and the self-check can pass a Node SQLite adapter.
+import { EMBEDDING_MODEL, vectorBlob } from './similarity.js';
 
-const COLS = 't.id, t.text, t.source, t.status, t.created_at, t.updated_at, a.title, a.type, a.tags, a.reminder_at, a.reminder_state, a.notification_id, j.id AS pending_job';
+const COLS = 't.id, t.text, t.source, t.status, t.created_at, t.updated_at, a.title, a.type, a.tags, a.reminder_at, a.reminder_state, a.notification_id, j.id AS pending_job, j.last_error';
 
 export async function migrate(db) {
   const { user_version } = await db.getFirstAsync('PRAGMA user_version');
@@ -34,8 +35,7 @@ export async function migrate(db) {
     PRAGMA user_version = 1;
   `);
   }
-  if (user_version >= 2) return;
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  if (user_version < 2) await db.withExclusiveTransactionAsync(async (tx) => {
     await tx.execAsync(`
       CREATE TABLE analysis (
         thought_id TEXT PRIMARY KEY REFERENCES thoughts(id),
@@ -89,6 +89,36 @@ export async function migrate(db) {
       PRAGMA user_version = 2;
     `);
   });
+  if (user_version < 3) await db.withExclusiveTransactionAsync(async (tx) => {
+    await tx.execAsync(`
+      CREATE TABLE embeddings (
+        thought_id TEXT PRIMARY KEY REFERENCES thoughts(id),
+        vector BLOB NOT NULL,
+        model TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE links (
+        id TEXT PRIMARY KEY,
+        from_id TEXT NOT NULL REFERENCES thoughts(id),
+        to_id TEXT NOT NULL REFERENCES thoughts(id),
+        relation TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        strength REAL NOT NULL,
+        created_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        CHECK(from_id != to_id)
+      );
+      CREATE UNIQUE INDEX links_pair ON links(min(from_id, to_id), max(from_id, to_id));
+      CREATE INDEX links_from ON links(from_id);
+      CREATE INDEX links_to ON links(to_id);
+      ALTER TABLE jobs ADD COLUMN refresh INTEGER NOT NULL DEFAULT 0;
+      INSERT INTO jobs(id, thought_id, kind, next_try_at)
+        SELECT lower(hex(randomblob(16))), id, 'embed', 0 FROM thoughts WHERE deleted = 0;
+      INSERT INTO jobs(id, thought_id, kind, next_try_at)
+        SELECT lower(hex(randomblob(16))), id, 'link', 0 FROM thoughts WHERE deleted = 0;
+      PRAGMA user_version = 3;
+    `);
+  });
 }
 
 export async function addThought(db, id, text, source = 'typed') {
@@ -96,6 +126,8 @@ export async function addThought(db, id, text, source = 'typed') {
   await db.withExclusiveTransactionAsync(async (tx) => {
     await tx.runAsync('INSERT INTO thoughts (id, text, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', id, text, source, now, now);
     await tx.runAsync("INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, 'analyze', ?)", id, now);
+    await tx.runAsync("INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, 'embed', ?)", id, now);
+    await tx.runAsync("INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, 'link', ?)", id, now);
   });
 }
 
@@ -119,10 +151,13 @@ export async function updateThought(db, id, { text = null, status = null }) {
   let result;
   await db.withExclusiveTransactionAsync(async (tx) => {
     result = await tx.runAsync('UPDATE thoughts SET text = ?, updated_at = ? WHERE id = ? AND deleted = 0', text, now, id);
-    if (result.changes) await tx.runAsync(`INSERT INTO jobs(id, thought_id, kind, next_try_at)
-      VALUES(lower(hex(randomblob(16))), ?, 'analyze', ?)
-      ON CONFLICT(thought_id, kind) DO UPDATE SET id = excluded.id, attempts = 0,
-        next_try_at = excluded.next_try_at, last_error = NULL`, id, now);
+    if (result.changes) {
+      await tx.runAsync('DELETE FROM embeddings WHERE thought_id = ?', id);
+      for (const kind of ['analyze', 'embed', 'link']) await tx.runAsync(`INSERT INTO jobs(id, thought_id, kind, next_try_at, refresh)
+        VALUES(lower(hex(randomblob(16))), ?, ?, ?, ?)
+        ON CONFLICT(thought_id, kind) DO UPDATE SET id = excluded.id, attempts = 0,
+          next_try_at = excluded.next_try_at, last_error = NULL, refresh = excluded.refresh`, id, kind, now, kind === 'link' ? 1 : 0);
+    }
   });
   return result;
 }
@@ -157,14 +192,78 @@ export function searchThoughts(db, input, type = null, tag = null) {
   );
 }
 
-export function dueJob(db, now = Date.now()) {
+export function dueJob(db, kind, now = Date.now()) {
   return db.getFirstAsync(`SELECT j.*, t.text FROM jobs j JOIN thoughts t ON t.id = j.thought_id
-    WHERE j.kind = 'analyze' AND j.next_try_at <= ? AND t.deleted = 0
-    ORDER BY t.created_at DESC LIMIT 1`, now);
+    WHERE j.kind = ? AND j.next_try_at <= ? AND t.deleted = 0
+    ORDER BY t.created_at DESC LIMIT 1`, kind, now);
 }
 
-export function nextJobTime(db) {
-  return db.getFirstAsync('SELECT MIN(next_try_at) AS next_try_at FROM jobs');
+export function nextJobTime(db, kinds) {
+  if (!kinds.length) return Promise.resolve(null);
+  return db.getFirstAsync(`SELECT MIN(next_try_at) AS next_try_at FROM jobs WHERE kind IN (${kinds.map(() => '?').join(',')})`, ...kinds);
+}
+
+export function pendingEmbeds(db) {
+  return db.getFirstAsync("SELECT COUNT(*) AS count FROM jobs j JOIN thoughts t ON t.id = j.thought_id WHERE j.kind = 'embed' AND t.deleted = 0");
+}
+
+export async function saveEmbedding(db, job, vector) {
+  const blob = vectorBlob(vector);
+  let saved = false;
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    const current = await tx.getFirstAsync("SELECT t.text, j.id FROM thoughts t JOIN jobs j ON j.thought_id = t.id AND j.kind = 'embed' WHERE t.id = ? AND t.deleted = 0", job.thought_id);
+    if (!current || current.id !== job.id || current.text !== job.text) return;
+    await tx.runAsync(`INSERT INTO embeddings(thought_id,vector,model,created_at) VALUES(?,?,?,?)
+      ON CONFLICT(thought_id) DO UPDATE SET vector=excluded.vector, model=excluded.model, created_at=excluded.created_at`,
+    job.thought_id, blob, EMBEDDING_MODEL, Date.now());
+    await tx.runAsync('DELETE FROM jobs WHERE id = ?', job.id);
+    saved = true;
+  });
+  return saved;
+}
+
+export function embeddingRows(db, type = null, tag = null) {
+  return db.getAllAsync(`SELECT ${COLS}, e.vector FROM embeddings e JOIN thoughts t ON t.id = e.thought_id
+    LEFT JOIN analysis a ON a.thought_id = t.id LEFT JOIN jobs j ON j.thought_id = t.id AND j.kind = 'analyze'
+    WHERE t.deleted = 0 AND e.model = ? AND (? IS NULL OR a.type = ?)
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM json_each(a.tags) WHERE value = ?))`,
+  EMBEDDING_MODEL, type, type, tag, tag);
+}
+
+export function deletedPairs(db, id) {
+  return db.getAllAsync('SELECT from_id, to_id FROM links WHERE deleted = 1 AND (from_id = ? OR to_id = ?)', id, id);
+}
+
+export function getLinkedThoughts(db, id) {
+  return db.getAllAsync(`SELECT l.id AS link_id, l.relation, l.reason, l.strength, t.id, t.text, t.created_at, a.title, a.type
+    FROM links l JOIN thoughts t ON t.id = CASE WHEN l.from_id = ? THEN l.to_id ELSE l.from_id END
+    LEFT JOIN analysis a ON a.thought_id = t.id
+    WHERE (l.from_id = ? OR l.to_id = ?) AND l.deleted = 0 AND t.deleted = 0
+    ORDER BY l.strength DESC, l.created_at DESC`, id, id, id);
+}
+
+export function removeLink(db, linkId) {
+  return db.runAsync('UPDATE links SET deleted = 1 WHERE id = ? AND deleted = 0', linkId);
+}
+
+export async function saveLinks(db, job, candidates, chosen) {
+  let saved = false;
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    const current = await tx.getFirstAsync("SELECT t.text, j.id FROM thoughts t JOIN jobs j ON j.thought_id = t.id AND j.kind = 'link' WHERE t.id = ? AND t.deleted = 0", job.thought_id);
+    if (!current || current.id !== job.id || current.text !== job.text) return;
+    if (job.refresh) await tx.runAsync('DELETE FROM links WHERE deleted = 0 AND (from_id = ? OR to_id = ?)', job.thought_id, job.thought_id);
+    for (const link of chosen) {
+      const candidate = candidates.find((row) => row.id === link.candidate_id);
+      if (!candidate) continue;
+      const stillCurrent = await tx.getFirstAsync('SELECT text FROM thoughts WHERE id = ? AND deleted = 0', candidate.id);
+      if (!stillCurrent || stillCurrent.text !== candidate.text) continue;
+      await tx.runAsync(`INSERT OR IGNORE INTO links(id,from_id,to_id,relation,reason,strength,created_at)
+        VALUES(?,?,?,?,?,?,?)`, link.id, job.thought_id, candidate.id, link.relation, link.reason, candidate.strength, Date.now());
+    }
+    await tx.runAsync('DELETE FROM jobs WHERE id = ?', job.id);
+    saved = true;
+  });
+  return saved;
 }
 
 export function topTags(db) {

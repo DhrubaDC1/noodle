@@ -2,12 +2,13 @@ import * as SecureStore from 'expo-secure-store';
 import Storage from 'expo-sqlite/kv-store';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, DeviceEventEmitter, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { GROQ_KEY_NAME, GROQ_MODEL } from '../../src/config';
 import { NoodleMark } from '../../src/icons';
+import { embeddingModelStatus } from '../../src/embeddingModel';
 import { kickAnalysis } from '../../src/queue';
 import { font, radius, sticker, type, useTheme } from '../../src/theme';
 
@@ -30,6 +31,12 @@ export default function Settings() {
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [suggest, setSuggest] = useState(true);
+  const [model, setModel] = useState(embeddingModelStatus);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('embeddingModelChanged', setModel);
+    return () => subscription.remove();
+  }, []);
 
   useFocusEffect(useCallback(() => {
     SecureStore.getItemAsync(GROQ_KEY_NAME).then(setKey).catch(() => Alert.alert('Could not read key'));
@@ -82,7 +89,17 @@ export default function Settings() {
             <Text style={[type.row, { color: c.text, flex: 1 }]}>Model</Text>
             <Text style={[styles.value, { color: c.muted }]}>{GROQ_MODEL.split('/').at(-1)}</Text>
           </View>
+          <View style={[styles.row, { borderTopColor: c.sunken, borderTopWidth: 2 }]}>
+            <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="model" color={c.text} /></View>
+            <Text style={[type.row, { color: c.text, flex: 1 }]}>On-device model</Text>
+            <Text style={[styles.value, { color: c.muted }]}>{model.state === 'downloading' ? `${Math.round(model.progress * 100)}%` : model.state === 'ready' ? 'Ready' : model.state === 'loading' ? 'Loading' : model.state === 'unavailable' ? 'App build needed' : model.state === 'error' ? 'Waiting' : 'Not downloaded'}</Text>
+          </View>
         </View>
+        {model.state === 'error' && <Pressable onPress={async () => {
+          try { await db.runAsync("UPDATE jobs SET next_try_at = 0 WHERE kind = 'embed'"); kickAnalysis(); }
+          catch { Alert.alert('Could not retry download'); }
+        }} accessibilityRole="button" style={styles.retry}><Text style={[type.meta, { color: c.text }]}>Model download failed. Retry</Text></Pressable>}
+        {model.state === 'unavailable' && <Text style={[styles.note, { color: c.muted }]}>Linked thoughts and meaning search need an installed development build. Expo Go can only search matching words.</Text>}
         <Text style={[styles.note, { color: c.muted }]}>Your key stays on this phone. Thoughts go to Groq only to be tagged and linked.</Text>
       </View>
       <View style={styles.section}>
@@ -121,6 +138,7 @@ const styles = StyleSheet.create({
   note: { marginHorizontal: 4, fontFamily: font.figtree400, fontSize: 13, lineHeight: 18 },
   switch: { width: 52, height: 32, borderRadius: 16, padding: 4 }, knob: { width: 24, height: 24, borderRadius: 12 },
   footer: { marginTop: 4, alignItems: 'center', gap: 4 }, footerText: { fontFamily: font.figtree600, fontSize: 12 },
+  retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   overlay: { flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 24 }, dialog: { borderRadius: radius.lg, padding: 18, gap: 12 },
   input: { borderWidth: 2, borderRadius: radius.md, minHeight: 48, paddingHorizontal: 12, fontFamily: font.figtree600, fontSize: 16 },
   actions: { flexDirection: 'row', gap: 8 }, action: { flex: 1, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

@@ -1,6 +1,7 @@
 import { GROQ_BASE_URL, GROQ_MODEL } from './config.js';
 
 const TYPES = ['idea', 'project', 'todo', 'memory', 'question'];
+const RELATIONS = ['same-project', 'follow-up', 'similar-idea', 'contradicts'];
 const schema = {
   type: 'object', additionalProperties: false,
   properties: {
@@ -12,6 +13,26 @@ const schema = {
   },
   required: ['title', 'type', 'tags', 'entities', 'reminder_at'],
 };
+const linkSchema = {
+  type: 'object', additionalProperties: false,
+  properties: { links: { type: 'array', items: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      candidate_id: { type: 'string' },
+      relation: { type: 'string', enum: RELATIONS },
+      reason: { type: 'string' },
+    },
+    required: ['candidate_id', 'relation', 'reason'],
+  } } },
+  required: ['links'],
+};
+
+// Keep Groq's reason (e.g. json_validate_failed) so a 400 is diagnosable from the card.
+async function httpError(response) {
+  let detail = '';
+  try { const body = (await response.json()).error; detail = body?.code || body?.message || ''; } catch { /* no body */ }
+  return new Error(`Groq HTTP ${response.status}${detail ? `: ${String(detail).replace(/\s+/g, ' ').slice(0, 90)}` : ''}`);
+}
 
 export function retryDelay(attempts) {
   return Math.min(3600000, 2000 * 2 ** Math.min(attempts, 11));
@@ -53,8 +74,50 @@ export async function analyzeThought(key, text, tags) {
       ],
     }),
   }); } finally { clearTimeout(timeout); }
-  if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
+  if (!response.ok) throw await httpError(response);
   let content;
   try { content = (await response.json()).choices?.[0]?.message?.content; } catch { throw new Error('Invalid Groq response'); }
   return parseAnalysis(content);
+}
+
+export function parseLinks(content, candidates) {
+  let value;
+  try { value = JSON.parse(content); } catch { throw new Error('Invalid JSON response'); }
+  const allowed = new Set(candidates.map((row) => row.id));
+  if (!value || !Array.isArray(value.links) || value.links.length > candidates.length ||
+    value.links.some((link) => !allowed.has(link?.candidate_id) || !RELATIONS.includes(link.relation) ||
+      typeof link.reason !== 'string' || !link.reason.trim() || link.reason.length > 160 || /[\r\n]/.test(link.reason))) {
+    throw new Error('Invalid links response');
+  }
+  const seen = new Set();
+  return value.links.filter((link) => {
+    if (seen.has(link.candidate_id)) return false;
+    seen.add(link.candidate_id);
+    link.reason = link.reason.trim();
+    return true;
+  });
+}
+
+export async function linkThought(key, text, candidates) {
+  if (!candidates.length) return [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  let response;
+  try { response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+    method: 'POST', signal: controller.signal,
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      reasoning_effort: 'low',
+      response_format: { type: 'json_schema', json_schema: { name: 'thought_links', strict: true, schema: linkSchema } },
+      messages: [
+        { role: 'system', content: 'Choose only genuinely related earlier thoughts. Return no links when connection is weak. Each reason is one short sentence explaining the connection. Use candidate_id exactly as given. Relations: same-project, follow-up, similar-idea, contradicts.' },
+        { role: 'user', content: JSON.stringify({ thought: text, candidates: candidates.map(({ id, text: candidateText, title }) => ({ id, text: candidateText, title })) }) },
+      ],
+    }),
+  }); } finally { clearTimeout(timeout); }
+  if (!response.ok) throw await httpError(response);
+  let content;
+  try { content = (await response.json()).choices?.[0]?.message?.content; } catch { throw new Error('Invalid Groq response'); }
+  return parseLinks(content, candidates);
 }

@@ -244,7 +244,7 @@ export function ThoughtCard({ item, time, tokens }) {
         <View style={styles.cardTop}>
           {pending ? <View style={styles.pendingRow}>
             {['idea', 'project', 'todo', 'memory', 'question'].map((kind) => <View key={kind} style={[styles.pendingDot, { backgroundColor: c[kind] }]} />)}
-            <Text style={[type.label, { color: c.muted }]}>Noodling on it…</Text>
+            <Text style={[type.label, { color: c.muted }]}numberOfLines={1}>{item.last_error ? `Retrying: ${item.last_error}` : 'Noodling on it…'}</Text>
           </View> : <TypePill kind={item.type} />}
           <View style={{ flex: 1 }} />
           <Text style={[type.label, { color: c.muted, fontFamily: font.figtree600 }]}>{time}</Text>
@@ -277,18 +277,20 @@ export function Empty({ children }) {
 // One tab-bar / action-bar button: icon over its 11px label, at least 54px
 // tall. Tabs: the active tab is filled ink; action-bar buttons pass `color`
 // for plain text-coloured buttons (700 weight, as in the Thought mockup).
-export function BarButton({ icon, label, active = false, color, onPress, accessibilityLabel }) {
+export function BarButton({ icon, label, active = false, color, onPress, accessibilityLabel, disabled = false }) {
   const { colors: c } = useTheme();
   const tint = active ? c.onInk : color ?? c.muted;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected: active }}
+      accessibilityState={{ selected: active, disabled }}
       accessibilityLabel={accessibilityLabel ?? label}
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.barButton,
         active && { backgroundColor: c.ink },
+        disabled && { opacity: 0.4 },
         pressed && { opacity: 0.6 },
       ]}
     >

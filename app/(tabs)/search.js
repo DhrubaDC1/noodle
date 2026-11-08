@@ -1,13 +1,14 @@
-// Search — Search.dc.html. Phase 1 finds matching words only; the type
-// filter chips and "Similar in meaning" arrive with phases 2 and 3.
+// Search — Search.dc.html.
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter, FlatList, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { searchThoughts } from '../../src/db';
-import { ClearIcon, FieldSearchIcon } from '../../src/icons';
+import { embeddingRows, searchThoughts } from '../../src/db';
+import { getEmbedder } from '../../src/embeddingModel';
+import { ClearIcon, FieldSearchIcon, MapIcon } from '../../src/icons';
 import { Empty, SectionTitle, ThoughtCard, dayTime, queryTokens, thoughtTypes } from '../../src/ui';
+import { meaningWithoutWords, topSimilar } from '../../src/similarity';
 import { font, sticker, type, useTheme } from '../../src/theme';
 
 const TAB_BAR_CLEARANCE = 26 + 70;
@@ -18,8 +19,12 @@ export default function Search() {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [meaning, setMeaning] = useState([]);
+  const [searchingMeaning, setSearchingMeaning] = useState(false);
   const [selectedType, setSelectedType] = useState(null);
   const mounted = useRef(true);
+  const request = useRef(0);
+  const timer = useRef();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const { tag } = useLocalSearchParams();
   const selectedTag = typeof tag === 'string' ? tag : null;
@@ -27,12 +32,34 @@ export default function Search() {
 
   // Re-run on every keystroke and when returning from an edited thought.
   const run = useCallback(() => {
+    const serial = ++request.current;
+    clearTimeout(timer.current);
+    setMeaning([]);
+    setSearchingMeaning(Boolean(query.trim()));
     searchThoughts(db, query, selectedType, selectedTag)
-      .then((rows) => { if (mounted.current) setResults(rows); })
-      .catch(() => { if (mounted.current) Alert.alert('Could not search thoughts'); });
+      .then((words) => {
+        if (!mounted.current || serial !== request.current) return;
+        setResults(words);
+        if (!query.trim()) { setSearchingMeaning(false); return; }
+        timer.current = setTimeout(async () => {
+          try {
+            const rows = await embeddingRows(db, selectedType, selectedTag);
+            if (!rows.length || serial !== request.current) { if (serial === request.current) setSearchingMeaning(false); return; }
+            const vector = await (await getEmbedder()).embed(query.trim());
+            const matches = topSimilar(vector, rows, 10 + words.length);
+            if (mounted.current && serial === request.current) setMeaning(meaningWithoutWords(words, matches));
+          } catch { /* keyword results remain available */ }
+          finally { if (mounted.current && serial === request.current) setSearchingMeaning(false); }
+        }, 250);
+      })
+      .catch(() => { if (mounted.current && serial === request.current) { setSearchingMeaning(false); Alert.alert('Could not search thoughts'); } });
   }, [db, query, selectedType, selectedTag]);
-  useFocusEffect(run);
-  useEffect(() => { const sub = DeviceEventEmitter.addListener('analysisChanged', run); return () => sub.remove(); }, [run]);
+  useFocusEffect(useCallback(() => { run(); return () => { request.current++; clearTimeout(timer.current); }; }, [run]));
+  useEffect(() => {
+    const analysis = DeviceEventEmitter.addListener('analysisChanged', run);
+    const embedding = DeviceEventEmitter.addListener('embeddingChanged', run);
+    return () => { analysis.remove(); embedding.remove(); };
+  }, [run]);
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
@@ -65,7 +92,7 @@ export default function Search() {
           ) : null}
         </View>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+      <ScrollView horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         <Pressable onPress={() => setSelectedType(null)} accessibilityRole="button" accessibilityState={{ selected: !selectedType }} style={[styles.filter, { backgroundColor: !selectedType ? c.ink : c.surface, borderColor: !selectedType ? c.ink : c.line }]}>
           <Text style={[styles.filterText, { color: !selectedType ? c.onInk : c.text }]}>All</Text>
         </Pressable>
@@ -80,11 +107,16 @@ export default function Search() {
         style={{ flex: 1 }}
         contentContainerStyle={[styles.list, { paddingTop: 22, paddingBottom: TAB_BAR_CLEARANCE + insets.bottom }]}
         ListHeaderComponent={
-          (query.trim() || selectedType || selectedTag) && results.length > 0 ? (
+          (query.trim() || selectedType || selectedTag) ? (
             <SectionTitle note={results.length}>Matching words</SectionTitle>
           ) : null
         }
-        ListEmptyComponent={<Empty>{query.trim() || selectedType || selectedTag ? 'No matches.' : 'Type a word to find a thought.'}</Empty>}
+        ListEmptyComponent={meaning.length ? null : <Empty>{searchingMeaning ? 'Looking for similar thoughts…' : query.trim() || selectedType || selectedTag ? 'No matches.' : 'Type a word to find a thought.'}</Empty>}
+        ListFooterComponent={meaning.length ? <View style={styles.meaningSection}>
+          <View style={styles.meaningTitle}><MapIcon size={20} color={c.text} /><SectionTitle note={meaning.length}>Similar in meaning</SectionTitle></View>
+          <Text style={[styles.meaningHint, { color: c.muted }]}>No matching words, but about the same thing</Text>
+          {meaning.map((item) => <View key={item.id} style={styles.meaningCard}><ThoughtCard item={item} time={dayTime(item.created_at)} /></View>)}
+        </View> : null}
         renderItem={({ item }) => <ThoughtCard item={item} time={dayTime(item.created_at)} tokens={tokens} />}
         ItemSeparatorComponent={CardGap}
         keyboardShouldPersistTaps="handled"
@@ -128,4 +160,7 @@ const styles = StyleSheet.create({
   filterText: { fontFamily: font.figtree700, fontSize: 14 },
   filterDot: { width: 10, height: 10, borderRadius: 5 },
   activeTag: { minHeight: 32, marginHorizontal: 16, marginTop: 10, borderRadius: 10, alignSelf: 'flex-start', paddingHorizontal: 10, justifyContent: 'center' },
+  meaningSection: { paddingTop: 12 }, meaningTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  meaningHint: { marginHorizontal: 4, marginBottom: 10, fontFamily: font.figtree400, fontSize: 13 },
+  meaningCard: { marginBottom: 10 },
 });

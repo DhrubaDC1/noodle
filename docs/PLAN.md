@@ -20,7 +20,7 @@ Core loop:
 | Audience | Just the owner now; public later | No choices that block a public release |
 | LLM analysis | Groq `qwen/qwen3.8-27b`, called directly from the app | Groq *preview* model: keep the model ID in one config constant. $0.80 / $4.00 per 1M in/out tokens. OpenAI-compatible API at `https://api.groq.com/openai/v1` |
 | Voice transcription | Groq `whisper-large-v3-turbo` | Same API key |
-| Embeddings | On device: `react-native-executorch` (`useTextEmbeddings`), English model all-MiniLM-L6-v2 | Needs New Architecture + a development build |
+| Embeddings | On device: `react-native-executorch` (`download` + `createTextEmbedder`), English model all-MiniLM-L6-v2 | Needs New Architecture + a development build |
 | Storage | SQLite on the phone, synced to Supabase later | Local-first, fully offline |
 | Platforms | iOS and Android | iOS share-from-other-apps shows "Coming soon" |
 | Capture | Typed text, voice, share (Android), reminders | Reminders are suggested by the LLM and confirmed by a tap |
@@ -42,7 +42,7 @@ On-device embeddings <--embed-- Job queue (retries offline) --LLM--> Groq API
 | --- | --- |
 | Framework | Expo SDK 58 (JavaScript, no TypeScript), expo-router, EAS development build from phase 3 |
 | Local database | expo-sqlite with FTS5 |
-| On-device AI | react-native-executorch + its Expo resource fetcher |
+| On-device AI | react-native-executorch + its resource downloader |
 | LLM and speech | Groq REST API via `fetch` |
 | Secrets | expo-secure-store |
 | Audio recording | expo-audio |
@@ -84,8 +84,8 @@ Mind map is always focused: topic view (bubbles sized by count) by default, or t
 
 - [x] **Phase 1: Capture and find.** Capture screen, list, detail, edit, done/archive/delete, FTS5 search, sync-ready schema.
 - [x] **Phase 2: LLM analysis.** Settings with the Groq key, job queue, titles/types/tags, filters, reminder suggestions + notifications. Done when: a new thought is tagged within a few seconds, and offline thoughts catch up when back online.
-- [ ] **Phase 3: Connections.** On-device embeddings, related thoughts with reasons, search by meaning, back-fill. Done when: "budgeting app idea" finds a thought that only says "track my spending".
-- [ ] **Phase 4: Mind map.** Topic and thought views, pan, zoom, tap to re-centre.
+- [x] **Phase 3: Connections.** On-device embeddings, related thoughts with reasons, search by meaning, back-fill. Done when: "budgeting app idea" finds a thought that only says "track my spending".
+- [x] **Phase 4: Mind map.** Topic and thought views, pan, zoom, tap to re-centre.
 - [ ] **Phase 5: Voice and share.** Mic + Groq Whisper; Android share target; iOS "Coming soon".
 - [ ] **Phase 6: Sync.** Supabase sign-in, push/pull by `updated_at`, last write wins. Move the Groq call into a Supabase Edge Function before any public release.
 
