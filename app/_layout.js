@@ -5,7 +5,10 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SQLiteProvider } from 'expo-sqlite';
+import { ShareIntentProvider } from 'expo-share-intent';
+import { Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
+import { AuthProvider } from '../src/auth';
 import { migrate } from '../src/db';
 import { fontAssets } from '../src/theme';
 import AnalysisRunner from '../src/queue';
@@ -28,13 +31,18 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontsError) return null;
 
   return (
-    <SQLiteProvider databaseName="thoughts.db" onInit={migrate}>
-      <AnalysisRunner />
-      <StatusBar style="auto" />
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="thought/[id]" options={{ headerShown: false }} />
-      </Stack>
-    </SQLiteProvider>
+    <ShareIntentProvider options={{ disabled: Platform.OS !== 'android' }}>
+      <AuthProvider>
+        <SQLiteProvider databaseName="thoughts.db" onInit={migrate}>
+          <AnalysisRunner />
+          <StatusBar style="auto" />
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="thought/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="sign-in" options={{ headerShown: false, presentation: 'modal' }} />
+          </Stack>
+        </SQLiteProvider>
+      </AuthProvider>
+    </ShareIntentProvider>
   );
 }

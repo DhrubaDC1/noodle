@@ -28,8 +28,11 @@ export default function MapScreen() {
     return () => { active = false; };
   }, [db, centerId]));
   const requested = typeof params.id === 'string' && params.id ? params.id : null;
-  // Take a requested id once, then clear it so it can't keep forcing Thought view.
-  useEffect(() => { if (requested) { setCenterId(requested); setView('thought'); router.setParams({ id: '' }); } }, [requested]);
+  // Take a requested id once (state set during render, guarded by `taken`), then clear the param so it can't keep forcing Thought view.
+  const [taken, setTaken] = useState(null);
+  if (requested && requested !== taken) { setTaken(requested); setCenterId(requested); setView('thought'); }
+  else if (!requested && taken) setTaken(null);
+  useEffect(() => { if (requested) router.setParams({ id: '' }); }, [requested]);
   const chosen = centerId;
   const showThought = view === 'thought';
   const topics = useMemo(() => topicsFrom(thoughts), [thoughts]);

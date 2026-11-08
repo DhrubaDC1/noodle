@@ -1,0 +1,44 @@
+# Supabase CLI config for Noodle. Docs: https://supabase.com/docs/guides/local-development/cli/config
+# `supabase config push` sends the [auth] settings below (including the email templates) to the linked project.
+project_id = "noodle"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+# Must match the hosted project: run `SHOW server_version;` in the SQL editor.
+major_version = 17
+
+[auth]
+enabled = true
+# Not used by the app (no links), but Supabase requires one.
+site_url = "http://localhost:3000"
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = true
+
+[auth.email]
+enabled = true
+# Sign in with the code only: no confirm-by-link step.
+enable_confirmations = false
+otp_length = 6
+otp_expiry = 3600
+max_frequency = "1m"
+
+# A returning user gets the "magic link" email, a first-time user gets "confirmation".
+# Both templates show the 6-digit code ({{ .Token }}) instead of a link.
+[auth.email.template.magic_link]
+subject = "Your Noodle code"
+content_path = "./supabase/templates/code.html"
+
+[auth.email.template.confirmation]
+subject = "Your Noodle code"
+content_path = "./supabase/templates/code.html"
+
+[functions.ai]
+entrypoint = "./functions/ai/index.js"
+# The platform rejects calls without a valid user JWT before the code runs.
+verify_jwt = true

@@ -12,14 +12,18 @@ Personal thought-capture app: type a thought, an LLM tags it and links it to ear
 - Schema changes: bump `PRAGMA user_version` with a new migration step in `migrate()`; never edit an applied step.
 - Keep every table sync-ready: UUID `id` (`expo-crypto` `randomUUID`), `created_at`/`updated_at` in epoch ms, soft delete via `deleted = 1`.
 - Saving a thought must never wait on the network. LLM and embedding work goes through the background job queue.
-- Groq model IDs live in one config constant (the main model is a preview model and may be retired).
-- The Groq API key is read from `expo-secure-store`; never hardcode or commit keys.
+- The Groq key lives only as the Supabase secret `GROQ_API_KEY`; the app never holds it. The app calls the `ai` Edge Function (`supabase/functions/ai/`) with the user's JWT via `src/ai.js`. Never hardcode or commit keys.
+- Groq model IDs live in one place: `supabase/functions/ai/config.js` (the main model is a preview model and may be retired).
+- Signing in is optional. Signed out, capture, keyword search and everything local keep working and AI jobs wait quietly. Sign-out never deletes local thoughts.
+- Supabase CLI config, migrations, templates, the function and its tests live in `supabase/` (JavaScript, not TypeScript). The project URL and publishable key come from `.env.local` as `EXPO_PUBLIC_SUPABASE_*` (gitignored; template `.env.local.example`).
+- `supabase/functions/ai/core.js` is shared by the function and the app (limits and validators only, no Deno or model IDs); keep it free of imports.
 - Shared tokens (colours, type, spacing, stickers) live in `src/theme.js`; shared components in `src/ui.js`; icons in `src/icons.js` — reuse them.
 - **Every screen must match `docs/DESIGN.md` and the mockups in `docs/design/` — when code and design disagree, the design wins.**
 - Install packages with `npx expo install <pkg>`.
 
 ## Checks before calling a task done
 
-- `npm run selfcheck` passes (database layer against Node's built-in SQLite). Extend it when `src/db.js` changes.
+- `npm run selfcheck` passes (database layer against Node's built-in SQLite, plus the AI request/response checks). Extend it when `src/db.js`, `src/ai.js` or `supabase/functions/ai/core.js` change.
+- `npm run test:function` passes when `supabase/functions/ai/` changes; run `npx supabase test db` when migrations change.
 - `npx expo export --platform android` and `--platform ios` bundle without errors.
 - Update the phase checklist in `docs/PLAN.md` when a phase is finished.

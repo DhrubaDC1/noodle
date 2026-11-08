@@ -43,7 +43,12 @@
         }
       ],
       "expo-secure-store",
-      ["expo-notifications", { "enableRemoteNotifications": false }],
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
       "react-native-blob-util",
       [
         "expo-build-properties",
@@ -51,6 +56,20 @@
           "android": {
             "minSdkVersion": 26
           }
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Noodle uses the microphone to record voice thoughts.",
+          "enableBackgroundRecording": false
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "disableIOS": true,
+          "androidIntentFilters": ["text/*"]
         }
       ]
     ],

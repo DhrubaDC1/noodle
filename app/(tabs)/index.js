@@ -1,17 +1,19 @@
 // Capture — Capture.dc.html / CaptureEmpty.dc.html. Phase 1: typed text and
 // the list; no tags, pills, reminders or linked thoughts yet.
 import { randomUUID } from 'expo-crypto';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useShareIntentContext } from 'expo-share-intent';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, DeviceEventEmitter, Keyboard, SectionList, StyleSheet, Text, View } from 'react-native';
+import { Alert, DeviceEventEmitter, Keyboard, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addThought, listThoughts } from '../../src/db';
+import { addThought, listThoughts, retryTranscribe } from '../../src/db';
+import { useVoiceRecorder } from '../../src/audio';
+import { shareText } from '../../src/share';
 import { NoodleMark } from '../../src/icons';
 import { CaptureEmpty, ComposeBox, SectionTitle, ThoughtCard, daySections, headerDate, listTime } from '../../src/ui';
 import { type, useTheme } from '../../src/theme';
-import { GROQ_KEY_NAME } from '../../src/config';
-import * as SecureStore from 'expo-secure-store';
+import { useSession } from '../../src/auth';
 import { kickAnalysis } from '../../src/queue';
 
 // Room for the floating tab bar (54px items + 12px padding + 4px borders),
@@ -23,8 +25,9 @@ export default function Capture() {
   const { colors: c } = useTheme();
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
+  const [source, setSource] = useState('typed');
   const [items, setItems] = useState([]);
-  const [hasKey, setHasKey] = useState(true);
+  const { session, ready } = useSession();
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
@@ -33,19 +36,40 @@ export default function Capture() {
       .catch(() => { if (mounted.current) Alert.alert('Could not load thoughts'); });
   }, [db]);
   useFocusEffect(load);
-  useFocusEffect(useCallback(() => { SecureStore.getItemAsync(GROQ_KEY_NAME).then((key) => { if (mounted.current) setHasKey(Boolean(key)); }).catch(() => { if (mounted.current) Alert.alert('Could not read key'); }); }, []));
   useEffect(() => {
     const changed = DeviceEventEmitter.addListener('analysisChanged', load);
-    const key = DeviceEventEmitter.addListener('analysisKick', () => SecureStore.getItemAsync(GROQ_KEY_NAME).then((value) => { if (mounted.current) setHasKey(Boolean(value)); }).catch(() => { if (mounted.current) Alert.alert('Could not read key'); }));
-    return () => { changed.remove(); key.remove(); };
+    return () => changed.remove();
   }, [load]);
+
+  const onVoiceSaved = useCallback(() => { load(); kickAnalysis(); }, [load]);
+  const voice = useVoiceRecorder(db, onVoiceSaved);
+
+  // Android share sheet: pre-fill the compose box; the user edits and taps Save (never auto-saved).
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+  useEffect(() => {
+    if (!hasShareIntent) return;
+    const shared = shareText(shareIntent);
+    resetShareIntent();
+    if (!shared) return;
+    // Syncing an Android intent (external system) into the compose box.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setText((current) => (current.trim() ? `${current.trimEnd()}\n\n${shared}` : shared));
+    setSource('share');
+    router.navigate('/');
+  }, [hasShareIntent, shareIntent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function retry(item) {
+    try { await retryTranscribe(db, item.id); load(); kickAnalysis(); }
+    catch { Alert.alert('Could not retry'); }
+  }
 
   async function save() {
     const t = text.trim();
     if (!t) return;
     try {
-      await addThought(db, randomUUID(), t);
+      await addThought(db, randomUUID(), t, source);
       setText(''); // only clear once it is safely stored
+      setSource('typed');
       Keyboard.dismiss();
       load();
       kickAnalysis();
@@ -62,8 +86,12 @@ export default function Capture() {
         <View style={{ flex: 1 }} />
         <Text style={[type.meta, { color: c.muted }]}>{headerDate()}</Text>
       </View>
-      <ComposeBox value={text} onChangeText={setText} onSave={save} />
-      {!hasKey && <Text style={[type.meta, styles.keyHint, { color: c.muted }]}>Add your Groq key in Settings</Text>}
+      <ComposeBox value={text} onChangeText={(value) => { setText(value); if (!value) setSource('typed'); }} onSave={save} voice={voice} />
+      {ready && !session && (
+        <Pressable onPress={() => router.push('/sign-in')} accessibilityRole="button" style={styles.signInHint}>
+          <Text style={[type.meta, { color: c.muted, textDecorationLine: 'underline' }]}>Sign in to switch on Noodle&apos;s AI</Text>
+        </Pressable>
+      )}
       <SectionList
         sections={daySections(items)}
         keyExtractor={(item) => item.id}
@@ -77,7 +105,7 @@ export default function Capture() {
             {section.title}
           </SectionTitle>
         )}
-        renderItem={({ item }) => <ThoughtCard item={item} time={listTime(item.created_at)} />}
+        renderItem={({ item }) => <ThoughtCard item={item} time={listTime(item.created_at)} onRetry={retry} />}
         ItemSeparatorComponent={CardGap}
         ListEmptyComponent={<CaptureEmpty />}
         stickySectionHeadersEnabled={false}
@@ -101,5 +129,5 @@ const styles = StyleSheet.create({
   },
   list: { paddingHorizontal: 16 },
   sectionAfter: { marginTop: 12 },
-  keyHint: { paddingHorizontal: 20, paddingTop: 10 },
+  signInHint: { minHeight: 44, paddingHorizontal: 20, justifyContent: 'center' },
 });

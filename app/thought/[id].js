@@ -21,8 +21,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { deleteThought, editAnalysis, getLinkedThoughts, getThought, removeLink, setReminderState, updateThought } from '../../src/db';
-import { ArchiveIcon, BellIcon, ChevronIcon, DoneIcon, MapIcon, ReopenIcon, TrashIcon } from '../../src/icons';
+import { deleteThought, editAnalysis, getLinkedThoughts, getThought, removeLink, retryTranscribe, setReminderState, updateThought } from '../../src/db';
+import { removeAudio } from '../../src/audio';
+import { clock, voiceState } from '../../src/transcribe';
+import { ArchiveIcon, BellIcon, ChevronIcon, DoneIcon, MapIcon, MicIcon, ReopenIcon, TrashIcon } from '../../src/icons';
 import { BarButton, Empty, SectionTitle, TypePill, moment, reminderTime, reminderSuggestion, tagsOf, thoughtTypes } from '../../src/ui';
 import { font, radius, sticker, type, useTheme } from '../../src/theme';
 import { analysisChanged, kickAnalysis } from '../../src/queue';
@@ -86,6 +88,7 @@ export default function ThoughtScreen() {
 
   async function toggleEdit() {
     if (!editing) {
+      setText(thought.text); // text may have arrived after this screen loaded (voice transcript)
       setEditing(true);
       return;
     }
@@ -181,11 +184,18 @@ export default function ThoughtScreen() {
     ]);
   }
 
+  async function retry() {
+    try { await retryTranscribe(db, id); setThought((current) => ({ ...current, transcribing: 1 })); kickAnalysis(); }
+    catch { Alert.alert('Could not retry'); }
+  }
+
+  const voice = voiceState(thought);
   const confirmDelete = () =>
     Alert.alert('Delete this thought?', 'It will be removed from your list and search.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => apply(async () => {
         await deleteThought(db, id);
+        if (thought.audio_path) { try { removeAudio(thought.audio_path); } catch { /* file already gone */ } }
         if (thought.notification_id) {
           try { await Notifications.cancelScheduledNotificationAsync(thought.notification_id); }
           catch { Alert.alert('Could not cancel old reminder'); }
@@ -209,19 +219,20 @@ export default function ThoughtScreen() {
           <View style={{ flex: 1 }} />
           <Pressable
             onPress={toggleEdit}
-            disabled={saving}
+            disabled={saving || Boolean(voice)}
             accessibilityRole="button"
             accessibilityLabel={editing ? 'Save changes' : 'Edit thought'}
-            style={({ pressed }) => [styles.headerAction, (saving || pressed) && { opacity: 0.6 }]}
+            style={({ pressed }) => [styles.headerAction, (saving || pressed) && { opacity: 0.6 }, voice && { opacity: 0 }]}
           >
             <Text style={[styles.headerButton, { color: c.text }]}>{editing ? 'Save' : 'Edit'}</Text>
           </Pressable>
         </View>
         <View style={styles.metaRow}>
           {thought.type && <Pressable onPress={() => setTypePicker(true)} accessibilityRole="button" accessibilityLabel="Change thought type"><TypePill kind={thought.type} large /></Pressable>}
+          {thought.source === 'voice' && <MicIcon size={14} color={c.muted} />}
           <Text style={[type.meta, { color: c.muted }]}>
             {moment(thought.created_at)}
-            {thought.updated_at !== thought.created_at ? ' · edited' : ''}
+            {thought.updated_at !== thought.created_at && thought.source !== 'voice' ? ' · edited' : ''}
             {thought.status === 'archived' ? ' · archived' : ''}
           </Text>
         </View>
@@ -233,7 +244,13 @@ export default function ThoughtScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {editing ? (
+        {voice ? (
+          <View style={styles.voiceBox}>
+            <Text style={[type.body, { color: c.text }]}>{voice === 'listening' ? 'Listening back…' : "Couldn't transcribe"}</Text>
+            <Text style={[type.meta, { color: c.muted }]}>{clock(thought.audio_ms)} voice note{voice === 'failed' ? '. Your recording is safe on this phone.' : ''}</Text>
+            {voice === 'failed' && <Pressable onPress={retry} accessibilityRole="button" accessibilityLabel="Retry transcription" style={[styles.reminderButton, { backgroundColor: c.sunken, alignSelf: 'flex-start', paddingHorizontal: 24 }]}><Text style={[styles.reminderButtonText, { color: c.text }]}>Retry</Text></Pressable>}
+          </View>
+        ) : editing ? (
           <TextInput
             value={text}
             onChangeText={setText}
@@ -312,6 +329,7 @@ const styles = StyleSheet.create({
   metaRow: { paddingHorizontal: 12, paddingTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { paddingHorizontal: 12, paddingTop: 10 },
   body: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 24, gap: 14 },
+  voiceBox: { gap: 8 },
   bodyInput: { minHeight: 140, textAlignVertical: 'top' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: { minHeight: 30, borderRadius: 10, paddingHorizontal: 12, justifyContent: 'center' },

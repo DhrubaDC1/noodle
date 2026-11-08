@@ -2,7 +2,8 @@
 // and the self-check can pass a Node SQLite adapter.
 import { EMBEDDING_MODEL, vectorBlob } from './similarity.js';
 
-const COLS = 't.id, t.text, t.source, t.status, t.created_at, t.updated_at, a.title, a.type, a.tags, a.reminder_at, a.reminder_state, a.notification_id, j.id AS pending_job, j.last_error';
+const COLS = 't.id, t.text, t.source, t.status, t.created_at, t.updated_at, a.title, a.type, a.tags, a.reminder_at, a.reminder_state, a.notification_id, j.id AS pending_job, j.last_error, t.audio_path, t.audio_ms, ' +
+  "EXISTS(SELECT 1 FROM jobs x WHERE x.thought_id = t.id AND x.kind = 'transcribe') AS transcribing";
 
 export async function migrate(db) {
   const { user_version } = await db.getFirstAsync('PRAGMA user_version');
@@ -119,6 +120,15 @@ export async function migrate(db) {
       PRAGMA user_version = 3;
     `);
   });
+  // audio_path: recording kept until it is transcribed (relative to the document directory).
+  // audio_ms: its length, for the card.
+  if (user_version < 4) await db.withExclusiveTransactionAsync(async (tx) => {
+    await tx.execAsync(`
+      ALTER TABLE thoughts ADD COLUMN audio_path TEXT;
+      ALTER TABLE thoughts ADD COLUMN audio_ms INTEGER;
+      PRAGMA user_version = 4;
+    `);
+  });
 }
 
 export async function addThought(db, id, text, source = 'typed') {
@@ -129,6 +139,51 @@ export async function addThought(db, id, text, source = 'typed') {
     await tx.runAsync("INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, 'embed', ?)", id, now);
     await tx.runAsync("INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, 'link', ?)", id, now);
   });
+}
+
+// A voice thought starts with empty text and only a transcribe job: analyze, embed and
+// link are queued by saveTranscript, so they cannot run before transcription succeeds.
+export async function addVoiceThought(db, id, audioPath, audioMs) {
+  const now = Date.now();
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await tx.runAsync("INSERT INTO thoughts (id, text, source, audio_path, audio_ms, created_at, updated_at) VALUES (?, '', 'voice', ?, ?, ?, ?)", id, audioPath, audioMs, now, now);
+    await tx.runAsync("INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, 'transcribe', ?)", id, now);
+  });
+}
+
+// Stores the transcript, then queues the usual jobs. Returns the audio path to delete, or null
+// if the job is stale (thought deleted, or job replaced by a retry).
+export async function saveTranscript(db, job, text) {
+  let audioPath = null;
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    const current = await tx.getFirstAsync("SELECT t.audio_path, j.id FROM thoughts t JOIN jobs j ON j.thought_id = t.id AND j.kind = 'transcribe' WHERE t.id = ? AND t.deleted = 0", job.thought_id);
+    if (!current || current.id !== job.id) return;
+    const now = Date.now();
+    await tx.runAsync('UPDATE thoughts SET text = ?, audio_path = NULL, updated_at = ? WHERE id = ?', text, now, job.thought_id);
+    await tx.runAsync('DELETE FROM jobs WHERE id = ?', job.id);
+    for (const kind of ['analyze', 'embed', 'link']) await tx.runAsync("INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, ?, ?)", job.thought_id, kind, now);
+    audioPath = current.audio_path;
+  });
+  return audioPath;
+}
+
+export const MAX_TRANSCRIBE_ATTEMPTS = 5;
+
+// Records a failed attempt. After MAX_TRANSCRIBE_ATTEMPTS (or a final error) the job is removed:
+// a thought with audio_path and no transcribe job is the "Couldn't transcribe" state, audio kept.
+export async function failTranscribe(db, job, reason, delay, final = false) {
+  const attempts = job.attempts + 1;
+  if (final || attempts >= MAX_TRANSCRIBE_ATTEMPTS) {
+    await db.runAsync('DELETE FROM jobs WHERE id = ?', job.id);
+    return 'failed';
+  }
+  await db.runAsync('UPDATE jobs SET attempts = ?, next_try_at = ?, last_error = ? WHERE id = ?', attempts, Date.now() + delay, reason, job.id);
+  return 'retry';
+}
+
+export async function retryTranscribe(db, id) {
+  await db.runAsync(`INSERT OR IGNORE INTO jobs(id, thought_id, kind, next_try_at)
+    SELECT lower(hex(randomblob(16))), id, 'transcribe', 0 FROM thoughts WHERE id = ? AND deleted = 0 AND audio_path IS NOT NULL`, id);
 }
 
 export function listThoughts(db, limit = 200) {
@@ -150,7 +205,7 @@ export async function updateThought(db, id, { text = null, status = null }) {
   if (text === null) return db.runAsync('UPDATE thoughts SET status = ?, updated_at = ? WHERE id = ? AND deleted = 0', status, now, id);
   let result;
   await db.withExclusiveTransactionAsync(async (tx) => {
-    result = await tx.runAsync('UPDATE thoughts SET text = ?, updated_at = ? WHERE id = ? AND deleted = 0', text, now, id);
+    result = await tx.runAsync('UPDATE thoughts SET text = ?, updated_at = ? WHERE id = ? AND deleted = 0 AND audio_path IS NULL', text, now, id);
     if (result.changes) {
       await tx.runAsync('DELETE FROM embeddings WHERE thought_id = ?', id);
       for (const kind of ['analyze', 'embed', 'link']) await tx.runAsync(`INSERT INTO jobs(id, thought_id, kind, next_try_at, refresh)
@@ -166,7 +221,7 @@ export async function updateThought(db, id, { text = null, status = null }) {
 export async function deleteThought(db, id) {
   let result;
   await db.withExclusiveTransactionAsync(async (tx) => {
-    result = await tx.runAsync('UPDATE thoughts SET deleted = 1, updated_at = ? WHERE id = ?', Date.now(), id);
+    result = await tx.runAsync('UPDATE thoughts SET deleted = 1, audio_path = NULL, updated_at = ? WHERE id = ?', Date.now(), id);
     await tx.runAsync('DELETE FROM jobs WHERE thought_id = ?', id);
   });
   return result;
@@ -193,7 +248,7 @@ export function searchThoughts(db, input, type = null, tag = null) {
 }
 
 export function dueJob(db, kind, now = Date.now()) {
-  return db.getFirstAsync(`SELECT j.*, t.text FROM jobs j JOIN thoughts t ON t.id = j.thought_id
+  return db.getFirstAsync(`SELECT j.*, t.text, t.audio_path FROM jobs j JOIN thoughts t ON t.id = j.thought_id
     WHERE j.kind = ? AND j.next_try_at <= ? AND t.deleted = 0
     ORDER BY t.created_at DESC LIMIT 1`, kind, now);
 }

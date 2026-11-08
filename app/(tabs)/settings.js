@@ -1,23 +1,26 @@
-import * as SecureStore from 'expo-secure-store';
 import Storage from 'expo-sqlite/kv-store';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, DeviceEventEmitter, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, DeviceEventEmitter, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import { GROQ_KEY_NAME, GROQ_MODEL } from '../../src/config';
+import { aiInfo } from '../../src/ai';
+import { aiClient, signOut, useSession } from '../../src/auth';
 import { NoodleMark } from '../../src/icons';
 import { embeddingModelStatus } from '../../src/embeddingModel';
 import { kickAnalysis } from '../../src/queue';
 import { font, radius, sticker, type, useTheme } from '../../src/theme';
 
 export const REMINDERS_SETTING = 'suggest_reminders';
+const AI_MODEL_CACHE = 'ai_model'; // last model name the function reported, shown while signed out
 
 function TileIcon({ name, color }) {
   return <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-    {name === 'key' ? <><Circle cx="8" cy="15" r="4" /><Path d="m10.8 12.2 8.7-8.7M16 7l3 3M14 9l2 2" /></> :
+    {name === 'user' ? <><Circle cx="12" cy="8" r="4" /><Path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></> :
+      name === 'out' ? <Path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9" /> :
       name === 'model' ? <><Rect x="5" y="5" width="14" height="14" rx="3" /><Path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></> :
+      name === 'share' ? <Path d="M12 3v12M8 7l4-4 4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /> :
       <><Path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><Path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /></>}
   </Svg>;
 }
@@ -26,10 +29,8 @@ export default function Settings() {
   const db = useSQLiteContext();
   const { colors: c } = useTheme();
   const insets = useSafeAreaInsets();
-  const [key, setKey] = useState(null);
-  const [draft, setDraft] = useState('');
-  const [modal, setModal] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { session } = useSession();
+  const [aiModel, setAiModel] = useState(null);
   const [suggest, setSuggest] = useState(true);
   const [model, setModel] = useState(embeddingModelStatus);
 
@@ -38,31 +39,19 @@ export default function Settings() {
     return () => subscription.remove();
   }, []);
 
+  const signedIn = Boolean(session);
   useFocusEffect(useCallback(() => {
-    SecureStore.getItemAsync(GROQ_KEY_NAME).then(setKey).catch(() => Alert.alert('Could not read key'));
     Storage.getItem(REMINDERS_SETTING).then((value) => setSuggest(value !== 'off')).catch(() => Alert.alert('Could not read setting'));
-  }, []));
+    Storage.getItem(AI_MODEL_CACHE).then((value) => value && setAiModel(value)).catch(() => {});
+    if (!signedIn) return;
+    // Ask the function which model it uses; this costs no AI call. Offline or failing: keep the cached name.
+    aiInfo(aiClient).then((models) => { setAiModel(models.chat); return Storage.setItem(AI_MODEL_CACHE, models.chat); }).catch(() => {});
+  }, [signedIn]));
 
-  async function saveKey() {
-    const value = draft.trim();
-    if (!value) return;
-    setSaving(true);
-    try {
-      await SecureStore.setItemAsync(GROQ_KEY_NAME, value);
-      await db.runAsync('UPDATE jobs SET next_try_at = 0');
-      Keyboard.dismiss();
-      setKey(value); setDraft(''); setModal(false); kickAnalysis();
-    } catch { Alert.alert('Could not save key'); }
-    finally { setSaving(false); }
-  }
-
-  function removeKey() {
-    Alert.alert('Remove Groq key?', 'Thoughts stay on this phone. New analysis waits until you add a key.', [
+  function confirmSignOut() {
+    Alert.alert('Sign out?', 'Your thoughts stay on this phone. New ones wait for the AI until you sign in again.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => {
-        try { await SecureStore.deleteItemAsync(GROQ_KEY_NAME); setKey(null); setDraft(''); setModal(false); kickAnalysis(); }
-        catch { Alert.alert('Could not remove key'); }
-      } },
+      { text: 'Sign out', style: 'destructive', onPress: () => signOut().catch(() => Alert.alert('Could not sign out')) },
     ]);
   }
 
@@ -78,16 +67,29 @@ export default function Settings() {
       <View style={styles.section}>
         <Text style={[styles.heading, { color: c.text }]}>AI</Text>
         <View style={[styles.group, sticker(c), { backgroundColor: c.surface }]}>
-          <Pressable onPress={() => setModal(true)} accessibilityRole="button" accessibilityLabel="Groq API key" style={[styles.row, { borderBottomColor: c.sunken, borderBottomWidth: 2 }]}>
-            <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="key" color={c.text} /></View>
-            <Text style={[type.row, { color: c.text, flex: 1 }]}>Groq API key</Text>
-            <Text style={[styles.value, { color: c.muted }]}>{key ? `•••• ${key.slice(-4)}` : 'Add key'}</Text>
-            <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
-          </Pressable>
+          {signedIn ? <>
+            <View style={[styles.row, { borderBottomColor: c.sunken, borderBottomWidth: 2 }]}>
+              <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="user" color={c.text} /></View>
+              <Text style={[type.row, { color: c.text }]}>Account</Text>
+              <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.value, styles.email, { color: c.muted }]}>{session.user.email}</Text>
+            </View>
+            <Pressable onPress={confirmSignOut} accessibilityRole="button" style={[styles.row, { borderBottomColor: c.sunken, borderBottomWidth: 2 }]}>
+              <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="out" color={c.text} /></View>
+              <Text style={[type.row, { color: c.text, flex: 1 }]}>Sign out</Text>
+              <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+            </Pressable>
+          </> : (
+            <Pressable onPress={() => router.push('/sign-in')} accessibilityRole="button" style={[styles.row, { borderBottomColor: c.sunken, borderBottomWidth: 2 }]}>
+              <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="user" color={c.text} /></View>
+              <Text style={[type.row, { color: c.text, flex: 1 }]}>Sign in</Text>
+              <Text style={[styles.value, { color: c.muted }]}>AI is off</Text>
+              <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+            </Pressable>
+          )}
           <View style={styles.row}>
             <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="model" color={c.text} /></View>
             <Text style={[type.row, { color: c.text, flex: 1 }]}>Model</Text>
-            <Text style={[styles.value, { color: c.muted }]}>{GROQ_MODEL.split('/').at(-1)}</Text>
+            <Text style={[styles.value, { color: c.muted }]}>{aiModel ? aiModel.split('/').at(-1) : signedIn ? 'Checking…' : 'Sign in to see'}</Text>
           </View>
           <View style={[styles.row, { borderTopColor: c.sunken, borderTopWidth: 2 }]}>
             <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="model" color={c.text} /></View>
@@ -100,7 +102,7 @@ export default function Settings() {
           catch { Alert.alert('Could not retry download'); }
         }} accessibilityRole="button" style={styles.retry}><Text style={[type.meta, { color: c.text }]}>Model download failed. Retry</Text></Pressable>}
         {model.state === 'unavailable' && <Text style={[styles.note, { color: c.muted }]}>Linked thoughts and meaning search need an installed development build. Expo Go can only search matching words.</Text>}
-        <Text style={[styles.note, { color: c.muted }]}>Your key stays on this phone. Thoughts go to Groq only to be tagged and linked.</Text>
+        <Text style={[styles.note, { color: c.muted }]}>{signedIn ? "Thoughts go to Noodle's AI service only to be tagged and linked. They are not kept there." : 'Without an account, everything still works except tags and links. Thoughts waiting for the AI are processed once you sign in.'}</Text>
       </View>
       <View style={styles.section}>
         <Text style={[styles.heading, { color: c.text }]}>Reminders</Text>
@@ -112,20 +114,19 @@ export default function Settings() {
           </Pressable>
         </View>
       </View>
+      <View style={styles.section}>
+        <Text style={[styles.heading, { color: c.text }]}>Sharing</Text>
+        <View style={[styles.group, sticker(c), { backgroundColor: c.surface }]}>
+          <Pressable disabled={Platform.OS !== 'android'} accessibilityRole="button" accessibilityState={{ disabled: Platform.OS !== 'android' }}
+            onPress={() => Alert.alert('Share to Noodle', 'In Chrome or any app, tap Share and pick Noodle. The text lands in the compose box so you can edit it, then tap Save.')} style={styles.row}>
+            <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="share" color={c.text} /></View>
+            <Text style={[type.row, { color: c.text, flex: 1 }]}>Share from other apps</Text>
+            {Platform.OS === 'android' ? <Text style={[styles.chevron, { color: c.muted }]}>›</Text> : <Text style={[styles.value, { color: c.muted }]}>Coming soon</Text>}
+          </Pressable>
+        </View>
+      </View>
       <View style={styles.footer}><NoodleMark size={40} color={c.ink} bg={c.bg} /><Text style={[styles.footerText, { color: c.muted }]}>noodle 1.0 · made for one busy brain</Text></View>
     </ScrollView>
-    <Modal visible={modal} transparent animationType="fade" onRequestClose={() => setModal(false)}>
-      <View style={styles.overlay}><View style={[styles.dialog, sticker(c), { backgroundColor: c.surface }]}>
-        <Text style={[type.sectionTitle, { color: c.text }]}>Groq API key</Text>
-        <Text style={[styles.note, { color: c.muted }]}>Paste a key to {key ? 'change' : 'enable'} analysis.</Text>
-        <TextInput value={draft} onChangeText={setDraft} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="off" placeholder="Paste API key" placeholderTextColor={c.muted} accessibilityLabel="Paste Groq API key" style={[styles.input, { color: c.text, borderColor: c.line }]} />
-        <View style={styles.actions}>
-          <Pressable onPress={() => { Keyboard.dismiss(); setDraft(''); setModal(false); }} style={[styles.action, { backgroundColor: c.sunken }]}><Text style={[styles.actionText, { color: c.text }]}>Cancel</Text></Pressable>
-          <Pressable onPress={saveKey} disabled={!draft.trim() || saving} style={[styles.action, { backgroundColor: c.ink, opacity: !draft.trim() || saving ? 0.5 : 1 }]}><Text style={[styles.actionText, { color: c.onInk }]}>Save</Text></Pressable>
-        </View>
-        {key && <Pressable onPress={removeKey} style={styles.remove}><Text style={[styles.actionText, { color: c.todoText }]}>Remove key</Text></Pressable>}
-      </View></View>
-    </Modal>
   </View>;
 }
 
@@ -139,8 +140,5 @@ const styles = StyleSheet.create({
   switch: { width: 52, height: 32, borderRadius: 16, padding: 4 }, knob: { width: 24, height: 24, borderRadius: 12 },
   footer: { marginTop: 4, alignItems: 'center', gap: 4 }, footerText: { fontFamily: font.figtree600, fontSize: 12 },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
-  overlay: { flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 24 }, dialog: { borderRadius: radius.lg, padding: 18, gap: 12 },
-  input: { borderWidth: 2, borderRadius: radius.md, minHeight: 48, paddingHorizontal: 12, fontFamily: font.figtree600, fontSize: 16 },
-  actions: { flexDirection: 'row', gap: 8 }, action: { flex: 1, minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  actionText: { fontFamily: font.figtree700, fontSize: 15 }, remove: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  email: { flex: 1, textAlign: 'right' },
 });

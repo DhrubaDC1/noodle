@@ -20,7 +20,8 @@ Sources (claude.ai, for the owner; Claude Code reads the files below instead):
 | `design/screens/Thought.dc.html` | Thought detail: tinted header, tags, reminder card (phase 2), linked thoughts (phase 3), action bar |
 | `design/screens/MapTopics.dc.html` | Map, topic view (phase 4) |
 | `design/screens/MapThought.dc.html` | Map, one-thought view (phase 4) |
-| `design/screens/Settings.dc.html` | Settings (Groq key in phase 2, sync in phase 6) |
+| `design/screens/Settings.dc.html` | Settings. AI group shown signed in (Account, Sign out, Model); signed out it is one "Sign in · AI is off" row. Sync in phase 6 pass B |
+| *(no mockup)* Sign in | Specified under "Sign in" below; built from the same parts as Capture and Settings |
 
 The `.dc.html` files are HTML mockups at 390×844 with inline styles. Read them as the spec: layout, sizes, copy, icon paths. Colours are CSS variables named like the tokens in camelCase (`--projectTint` = `project-tint`); the `light`/`dark` objects at the bottom of each file hold the values. Ignore the `<x-dc>`, `<helmet>` and `DCLogic` wrapper markup.
 
@@ -31,6 +32,19 @@ The `.dc.html` files are HTML mockups at 390×844 with inline styles. Read them 
 3. **Type:** Bricolage Grotesque 700-800 for the wordmark and titles; Figtree for everything else. Wordmark is lowercase "noodle".
 4. **Dark mode follows the system** (`useColorScheme`), using the dark token values.
 5. **Copy:** use the designs' wording ("What's on your noodle?", "Noodling on it…", "Your bowl is empty").
+
+## Sign in
+
+Optional email-code sign-in (`app/sign-in.js`), a modal opened from the Capture hint or Settings. No mockup; it reuses the system:
+
+- Ink noodle mark top left, close button (44px sunken circle) top right.
+- Title in `screen-title` ("Switch on the AI", then "Check your email"), one muted `body` line under it.
+- One sticker-small field (`radius-md`). Email step: Figtree 600, 18px. Code step: Bricolage 800, 30px, wide letter-spacing, centred, number pad, `oneTimeCode` autofill; submits itself at 6 digits.
+- Primary button "Send code" / "Sign in" (ink, verb first); below it the quiet button "Send again in 42s" then "Send a new code", and a text link "Use a different email".
+- Errors are one plain `meta` line in `text` colour under the field ("That code did not work. Try again."): no type colours.
+- Signed out, Capture shows a muted underlined line under the compose box: "Sign in to switch on Noodle's AI" (44px tall, opens this screen). It replaces the old "Add your Groq key" hint.
+
+The Groq key is never on the phone: the app signs in to Supabase and calls the `ai` Edge Function, which holds the key.
 
 ## React Native notes
 

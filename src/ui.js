@@ -3,7 +3,7 @@
 // docs/DESIGN.md — build screens with these parts so they can't drift.
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   Bowl,
   CaptureIcon,
@@ -16,6 +16,8 @@ import {
   BellIcon,
 } from './icons';
 import { font, radius, space, sticker, type, useTheme } from './theme';
+import { clock, voiceState } from './transcribe';
+import { MAX_RECORD_MS } from './config';
 
 // ---------------------------------------------------------------- dates
 // Human times, per the brand voice: "Today, 11:40 am", "Mon 9 Nov, 10 am".
@@ -232,24 +234,31 @@ export function TypePill({ kind, large = false }) {
   </View>;
 }
 
-export function ThoughtCard({ item, time, tokens }) {
+export function ThoughtCard({ item, time, tokens, onRetry }) {
   const { colors: c } = useTheme();
   const done = item.status === 'done';
   const pending = Boolean(item.pending_job) || !item.title;
   const tags = tagsOf(item);
+  const voice = voiceState(item);
   return (
       <Pressable onPress={() => { Keyboard.dismiss(); router.push(`/thought/${item.id}`); }}
-        accessibilityRole="button" accessibilityLabel={pending ? item.text : item.title}
+        accessibilityRole="button" accessibilityLabel={voice ? `Voice note, ${clock(item.audio_ms)}` : pending ? item.text : item.title}
         style={({ pressed }) => [styles.card, { backgroundColor: pending ? c.surface : c[`${item.type}Tint`] }, pending && { borderWidth: 2, borderStyle: 'dashed', borderColor: c.line }, pressed && { opacity: 0.5 }]}>
         <View style={styles.cardTop}>
-          {pending ? <View style={styles.pendingRow}>
+          {voice === 'failed' ? <Text style={[type.label, { color: c.text }]}>{"Couldn't transcribe"}</Text> : pending ? <View style={styles.pendingRow}>
             {['idea', 'project', 'todo', 'memory', 'question'].map((kind) => <View key={kind} style={[styles.pendingDot, { backgroundColor: c[kind] }]} />)}
-            <Text style={[type.label, { color: c.muted }]}numberOfLines={1}>{item.last_error ? `Retrying: ${item.last_error}` : 'Noodling on it…'}</Text>
+            <Text style={[type.label, { color: c.muted }]}numberOfLines={1}>{voice ? 'Listening back…' : item.last_error ? `Retrying: ${item.last_error}` : 'Noodling on it…'}</Text>
           </View> : <TypePill kind={item.type} />}
           <View style={{ flex: 1 }} />
+          {item.source === 'voice' && <MicIcon size={13} color={c.muted} />}
           <Text style={[type.label, { color: c.muted, fontFamily: font.figtree600 }]}>{time}</Text>
         </View>
-        {pending ? <Highlight text={item.text} tokens={tokens} style={[styles.cardText, { color: c.text }]} numberOfLines={4} /> : <>
+        {voice ? <>
+          <Text style={[styles.cardText, { color: c.text }]}>{clock(item.audio_ms)} voice note</Text>
+          {voice === 'failed' && <Text style={[type.snippet, { color: c.muted }]}>Your recording is safe on this phone.</Text>}
+          {voice === 'failed' && onRetry && <Pressable onPress={(event) => { event.stopPropagation(); onRetry(item); }} accessibilityRole="button" accessibilityLabel="Retry transcription"
+            style={({ pressed }) => [styles.retryButton, { backgroundColor: c.sunken }, pressed && { opacity: 0.6 }]}><Text style={[styles.buttonLabel, { color: c.text, fontFamily: font.figtree700 }]}>Retry</Text></Pressable>}
+        </> : pending ? <Highlight text={item.text} tokens={tokens} style={[styles.cardText, { color: c.text }]} numberOfLines={4} /> : <>
           <Highlight text={item.title} tokens={tokens} style={[type.cardTitle, { color: done ? c.muted : c.text }, done && styles.cardDone]} numberOfLines={2} />
           <Highlight text={item.text} tokens={tokens} style={[type.snippet, { color: c.muted }]} numberOfLines={2} />
           <View style={styles.tagsRow}>
@@ -337,8 +346,22 @@ export function FloatingTabBar({ state, descriptors, navigateToTab, insets }) {
 }
 
 // "What's on your noodle?" — the sticker compose box from Capture.dc.html.
-// Phase 1 has no voice capture yet; the mic only reports it is coming.
-export function ComposeBox({ value, onChangeText, onSave }) {
+// `voice` (from useVoiceRecorder) swaps the text area for the recording state: a pulsing ink dot,
+// a running timer, Cancel and Stop. Not in the mockups; built from the system's sticker/ink parts.
+function PulseDot({ color }) {
+  const [opacity] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(opacity, { toValue: 0.25, duration: 600, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+  return <Animated.View style={[styles.recDot, { backgroundColor: color, opacity }]} />;
+}
+
+export function ComposeBox({ value, onChangeText, onSave, voice }) {
   const { colors: c } = useTheme();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
@@ -346,8 +369,30 @@ export function ComposeBox({ value, onChangeText, onSave }) {
     const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
     return () => { shown.remove(); hidden.remove(); };
   }, []);
-  const micComingSoon = () =>
-    Alert.alert('Coming soon', 'Voice notes arrive in a later phase.');
+  if (voice.active) {
+    return (
+      <View style={[styles.compose, sticker(c), { backgroundColor: c.surface }]}>
+        <View style={styles.recording}>
+          <View style={styles.recLabel}>
+            <PulseDot color={c.ink} />
+            <Text style={[type.meta, { color: c.muted }]}>Listening…</Text>
+          </View>
+          <Text accessibilityRole="timer" accessibilityLabel={`Recording, ${clock(voice.ms)}`} style={[styles.timer, { color: c.text }]}>
+            {clock(voice.ms)}<Text style={[type.meta, { color: c.muted }]}>  of {clock(MAX_RECORD_MS)}</Text>
+          </Text>
+        </View>
+        <View style={styles.composeRow}>
+          <Button title="Cancel" kind="secondary" onPress={voice.cancel} />
+          <View style={{ flex: 1 }} />
+          <Pressable onPress={voice.stop} accessibilityRole="button" accessibilityLabel="Stop and save recording"
+            style={({ pressed }) => [styles.button, { backgroundColor: c.ink }, pressed && { opacity: 0.5 }]}>
+            <View style={[styles.stopGlyph, { backgroundColor: c.onInk }]} />
+            <Text style={[styles.buttonLabel, { color: c.onInk, fontFamily: font.figtree700 }]}>Stop</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={[styles.compose, sticker(c), { backgroundColor: c.surface }]}>
       <TextInput
@@ -363,7 +408,7 @@ export function ComposeBox({ value, onChangeText, onSave }) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Record a voice note"
-          onPress={micComingSoon}
+          onPress={() => { Keyboard.dismiss(); voice.start(); }}
           style={({ pressed }) => [styles.micButton, { backgroundColor: c.sunken }, pressed && { opacity: 0.6 }]}
         >
           <MicIcon size={20} color={c.text} />
@@ -372,6 +417,7 @@ export function ComposeBox({ value, onChangeText, onSave }) {
         <View style={{ flex: 1 }} />
         <Button title="Save" onPress={onSave} disabled={!value.trim()} />
       </View>
+      {voice.notice && <Text accessibilityLiveRegion="polite" style={[type.meta, { color: c.muted }]}>{voice.notice}</Text>}
     </View>
   );
 }
@@ -468,5 +514,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  recording: { height: 72, justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
+  recLabel: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  recDot: { width: 10, height: 10, borderRadius: 5 },
+  timer: { fontFamily: font.bricolage800, fontSize: 34, lineHeight: 38, letterSpacing: -1.02 },
+  stopGlyph: { width: 12, height: 12, borderRadius: 3 },
+  retryButton: { alignSelf: 'flex-start', minHeight: 44, minWidth: 88, borderRadius: radius.md, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   keyboardDone: { minHeight: 44, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
 });

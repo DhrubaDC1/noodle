@@ -2,8 +2,10 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import * as T from '../src/db.js';
-import { analyzeThought, linkThought, parseAnalysis, parseLinks, retryDelay } from '../src/groq.js';
-import { GROQ_MODEL } from '../src/config.js';
+import { AiError, aiInfo, analyzeThought, linkThought, retryDelay, transcribeAudio } from '../src/ai.js';
+import { LIMITS, parseAnalysis, parseLinks, validateAnalyze, validateAudio, validateLink } from '../supabase/functions/ai/core.js';
+import { clock, runTranscribe, voiceState } from '../src/transcribe.js';
+import { MAX_SHARE_CHARS, shareText } from '../src/share.js';
 import { blobVector, cosineSimilarity, meaningWithoutWords, topSimilar, vectorBlob, VECTOR_SIZE } from '../src/similarity.js';
 
 const raw = new DatabaseSync(':memory:');
@@ -25,7 +27,7 @@ assert.equal(T.toFtsQuery('  ?? '), '');
 
 await T.migrate(db);
 await T.migrate(db); // second run must be a no-op
-assert.equal((await db.getFirstAsync('PRAGMA user_version')).user_version, 3);
+assert.equal((await db.getFirstAsync('PRAGMA user_version')).user_version, 4);
 assert.equal((await db.getFirstAsync("SELECT COUNT(*) AS count FROM jobs")).count, 0);
 
 await T.addThought(db, 'a', 'Build a budgeting app for tracking spending');
@@ -67,29 +69,11 @@ const valid = JSON.stringify({ title: 'Trip with Nadia', type: 'todo', tags: ['t
 assert.equal(parseAnalysis(valid).type, 'todo');
 assert.throws(() => parseAnalysis('{bad'), /Invalid JSON response/);
 assert.throws(() => parseAnalysis(valid.replace('"todo"', '"unknown"')), /Invalid analysis response/);
+assert.throws(() => parseLinks('{bad', []), /Invalid JSON response/);
+assert.throws(() => parseLinks(JSON.stringify({ links: [{ candidate_id: 'unknown', relation: 'follow-up', reason: 'Unknown.' }] }), [{ id: 'b' }]), /Invalid links response/);
 assert.equal(retryDelay(0), 2000);
 assert.equal(retryDelay(20), 3600000);
 const realFetch = globalThis.fetch;
-globalThis.fetch = async (_url, options) => {
-  const request = JSON.parse(options.body);
-  assert.equal(request.model, GROQ_MODEL);
-  assert.equal(request.reasoning_effort, 'low');
-  assert.equal(request.response_format.json_schema.strict, true);
-  assert.match(request.messages[0].content, /Asia\/Dhaka/);
-  assert.match(request.messages[0].content, /travel/);
-  return new Response(JSON.stringify({ choices: [{ message: { content: valid } }] }), { status: 200 });
-};
-assert.equal((await analyzeThought('fake-key', 'Trip with Nadia', ['travel'])).title, 'Trip with Nadia');
-globalThis.fetch = async (_url, options) => {
-  const request = JSON.parse(options.body);
-  assert.equal(request.response_format.json_schema.name, 'thought_links');
-  assert.equal(request.messages[1].content.includes('candidate'), true);
-  return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ links: [{ candidate_id: 'b', relation: 'follow-up', reason: 'Both concern the trip.' }] }) } }] }), { status: 200 });
-};
-assert.equal((await linkThought('fake-key', 'Trip with Nadia', [{ id: 'b', text: 'Call Nadia' }]))[0].relation, 'follow-up');
-assert.throws(() => parseLinks('{bad', []), /Invalid JSON response/);
-assert.throws(() => parseLinks(JSON.stringify({ links: [{ candidate_id: 'unknown', relation: 'follow-up', reason: 'Unknown.' }] }), [{ id: 'b' }]), /Invalid links response/);
-globalThis.fetch = realFetch;
 
 const embedJob = await T.dueJob(db, 'embed');
 assert.equal(await T.saveEmbedding(db, embedJob, vector), true);
@@ -154,7 +138,7 @@ const oldDb = {
   },
 };
 await T.migrate(oldDb);
-assert.equal((await oldDb.getFirstAsync('PRAGMA user_version')).user_version, 3);
+assert.equal((await oldDb.getFirstAsync('PRAGMA user_version')).user_version, 4);
 assert.equal((await T.searchThoughts(oldDb, 'older'))[0].id, 'old');
 assert.equal((await oldDb.getFirstAsync('SELECT COUNT(*) AS count FROM jobs')).count, 3, 'old thought queued for every job');
 
@@ -176,7 +160,7 @@ const v2db = {
 };
 await T.migrate(v2db);
 await T.migrate(v2db);
-assert.equal((await v2db.getFirstAsync('PRAGMA user_version')).user_version, 3);
+assert.equal((await v2db.getFirstAsync('PRAGMA user_version')).user_version, 4);
 assert.deepEqual((await v2db.getAllAsync("SELECT kind FROM jobs ORDER BY kind")).map((row) => row.kind), ['embed', 'link']);
 await T.addThought(v2db, 'new', 'A related thought');
 const firstLinkJob = await v2db.getFirstAsync("SELECT j.*, t.text FROM jobs j JOIN thoughts t ON t.id = j.thought_id WHERE j.thought_id = 'new' AND j.kind = 'link'");
@@ -210,5 +194,203 @@ assert.equal(M.noodlePath({ x: 0, y: 0 }, { x: 30, y: 0 }), 'M0 0C10 12 20 -12 3
 const positions = M.layoutMap(dense, topicLinks, 900, 700);
 assert.deepEqual(positions.map(({ x,y }) => [x,y]), M.layoutMap(dense, topicLinks, 900, 700).map(({ x,y }) => [x,y]));
 for (let i=0; i<positions.length; i++) for (let j=i+1; j<positions.length; j++) assert.ok(Math.hypot(positions[i].x-positions[j].x,positions[i].y-positions[j].y) >= positions[i].radius+positions[j].radius-0.1);
+
+// ---- Phase 5: voice and share ----
+const adapt = (raw) => {
+  const d = {
+    execAsync: async (q) => raw.exec(q),
+    runAsync: async (q, ...p) => raw.prepare(q).run(...p),
+    getAllAsync: async (q, ...p) => raw.prepare(q).all(...p),
+    getFirstAsync: async (q, ...p) => raw.prepare(q).get(...p) ?? null,
+    withExclusiveTransactionAsync: async (task) => {
+      raw.exec('BEGIN IMMEDIATE');
+      try { await task(d); raw.exec('COMMIT'); } catch (error) { raw.exec('ROLLBACK'); throw error; }
+    },
+  };
+  return d;
+};
+const kindsFor = async (d, id) => (await d.getAllAsync('SELECT kind FROM jobs WHERE thought_id = ? ORDER BY kind', id)).map((row) => row.kind);
+const columns = async (d) => (await d.getAllAsync("SELECT name FROM pragma_table_info('thoughts')")).map((row) => row.name);
+
+// Migration 4 on top of a real phase 4 (version 3) database keeps data and adds nullable columns.
+const p4raw = new DatabaseSync(':memory:');
+const p4 = adapt(p4raw);
+await T.migrate(p4);
+await T.addThought(p4, 'kept', 'A phase four thought');
+p4raw.exec('ALTER TABLE thoughts DROP COLUMN audio_path; ALTER TABLE thoughts DROP COLUMN audio_ms; PRAGMA user_version = 3;');
+assert.ok(!(await columns(p4)).includes('audio_path'), 'test DB looks like phase 4');
+const jobsBefore = (await p4.getFirstAsync('SELECT COUNT(*) AS count FROM jobs')).count;
+await T.migrate(p4);
+await T.migrate(p4);
+assert.equal((await p4.getFirstAsync('PRAGMA user_version')).user_version, 4);
+assert.ok((await columns(p4)).includes('audio_path') && (await columns(p4)).includes('audio_ms'));
+assert.equal((await T.getThought(p4, 'kept')).audio_path, null);
+assert.equal((await T.getThought(p4, 'kept')).text, 'A phase four thought');
+assert.equal((await p4.getFirstAsync('SELECT COUNT(*) AS count FROM jobs')).count, jobsBefore, 'no jobs added by migration');
+assert.equal(voiceState(await T.getThought(p4, 'kept')), null);
+
+// Job ordering: a voice thought only has a transcribe job until transcription succeeds.
+await T.addVoiceThought(db, 'v1', 'ExpoAudio/voice-v1.m4a', 42000);
+assert.deepEqual(await kindsFor(db, 'v1'), ['transcribe']);
+for (const kind of ['analyze', 'embed', 'link']) assert.equal((await T.dueJob(db, kind))?.thought_id === 'v1', false, `no ${kind} before transcript`);
+let voiceRow = await T.getThought(db, 'v1');
+assert.equal(voiceRow.source, 'voice');
+assert.equal(voiceRow.text, '');
+assert.equal(voiceRow.audio_ms, 42000);
+assert.equal(voiceState(voiceRow), 'listening');
+
+// Failure: 4 failures retry, the 5th keeps the audio and shows "Couldn't transcribe".
+for (let i = 0; i < T.MAX_TRANSCRIBE_ATTEMPTS - 1; i++) {
+  const j = await T.dueJob(db, 'transcribe', Date.now() + 1e9);
+  assert.equal(j.audio_path, 'ExpoAudio/voice-v1.m4a');
+  assert.equal(await T.failTranscribe(db, j, 'Transcription request failed', retryDelay(j.attempts)), 'retry');
+}
+assert.equal((await db.getFirstAsync("SELECT attempts, last_error FROM jobs WHERE thought_id = 'v1'")).attempts, 4);
+assert.equal(await T.failTranscribe(db, await T.dueJob(db, 'transcribe', Date.now() + 1e9), 'Transcription request failed', 0), 'failed');
+assert.deepEqual(await kindsFor(db, 'v1'), [], 'no jobs left, nothing queued behind a failed transcript');
+voiceRow = await T.getThought(db, 'v1');
+assert.equal(voiceRow.audio_path, 'ExpoAudio/voice-v1.m4a', 'failed transcription keeps the recording');
+assert.equal(voiceState(voiceRow), 'failed');
+assert.equal((await T.updateThought(db, 'v1', { text: 'typed over it' })).changes, 0, 'cannot edit text before transcript');
+await T.retryTranscribe(db, 'v1');
+await T.retryTranscribe(db, 'v1');
+assert.deepEqual(await kindsFor(db, 'v1'), ['transcribe'], 'retry queues exactly one job');
+assert.equal((await db.getFirstAsync("SELECT attempts FROM jobs WHERE thought_id = 'v1'")).attempts, 0);
+assert.equal(voiceState(await T.getThought(db, 'v1')), 'listening');
+await T.retryTranscribe(db, 'a-typed-thought-or-missing');
+
+// An empty transcript is final: straight to the failed state without 5 paid retries.
+const silentJob = await T.dueJob(db, 'transcribe');
+const removed = [];
+await assert.rejects(runTranscribe(db, silentJob, { transcribe: async () => '  \n', removeAudio: (path) => removed.push(path) }), (error) => error.final === true && /No speech heard/.test(error.message));
+assert.equal(await T.failTranscribe(db, silentJob, 'No speech heard', 0, true), 'failed');
+assert.deepEqual(removed, [], 'audio kept when nothing was transcribed');
+await T.retryTranscribe(db, 'v1');
+
+// Success: text stored, audio removed, then analyze/embed/link queued.
+const okJob = await T.dueJob(db, 'transcribe');
+const seen = [];
+assert.equal(await runTranscribe(db, okJob, {
+  transcribe: async (path) => { seen.push(path); return '  Remind me to book the Sylhet trip  '; },
+  removeAudio: (path) => removed.push(path),
+}), true);
+assert.deepEqual(seen, ['ExpoAudio/voice-v1.m4a']);
+assert.deepEqual(removed, ['ExpoAudio/voice-v1.m4a'], 'audio file deleted after success');
+voiceRow = await T.getThought(db, 'v1');
+assert.equal(voiceRow.text, 'Remind me to book the Sylhet trip');
+assert.equal(voiceRow.audio_path, null);
+assert.equal(voiceState(voiceRow), null);
+assert.deepEqual(await kindsFor(db, 'v1'), ['analyze', 'embed', 'link']);
+assert.equal((await T.searchThoughts(db, 'sylhet'))[0].id, 'v1', 'transcript is searchable');
+assert.equal(await runTranscribe(db, okJob, { transcribe: async () => 'again', removeAudio: (path) => removed.push(path) }), false, 'stale job saves nothing');
+assert.equal(removed.length, 1);
+assert.equal((await T.getThought(db, 'v1')).text, 'Remind me to book the Sylhet trip');
+
+// A failing delete never loses the saved transcript; a deleted thought keeps no audio path.
+await T.addVoiceThought(db, 'v2', 'ExpoAudio/voice-v2.m4a', 5000);
+assert.equal(await runTranscribe(db, await db.getFirstAsync("SELECT j.*, t.audio_path FROM jobs j JOIN thoughts t ON t.id = j.thought_id WHERE j.thought_id = 'v2'"),
+  { transcribe: async () => 'Second voice note', removeAudio: () => { throw new Error('disk'); } }), true);
+assert.equal((await T.getThought(db, 'v2')).text, 'Second voice note');
+await T.addVoiceThought(db, 'v3', 'ExpoAudio/voice-v3.m4a', 3000);
+await T.deleteThought(db, 'v3');
+assert.equal(await db.getFirstAsync("SELECT audio_path FROM thoughts WHERE id = 'v3'").then((row) => row.audio_path), null);
+assert.deepEqual(await kindsFor(db, 'v3'), []);
+assert.equal(clock(42000), '0:42');
+assert.equal(clock(120000), '2:00');
+assert.equal(clock(null), '0:00');
+
+// AI function calls: request building and response validation for analyze, link, transcribe and info.
+const client = { url: 'https://proj.supabase.co', publishableKey: 'sb_publishable_test', getToken: async () => 'jwt-123' };
+const sent = [];
+const reply = (status, body) => { globalThis.fetch = async (url, options) => { sent.push({ url: String(url), options }); return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status }); }; };
+const analysis = { title: 'Trip with Nadia', type: 'todo', tags: ['travel', 'friends'], entities: ['Nadia'], reminder_at: null };
+
+reply(200, { model: 'qwen/test', analysis });
+const analyzed = await analyzeThought(client, 'x'.repeat(LIMITS.text + 500), Array.from({ length: 40 }, (_, i) => `tag-${i}`));
+assert.deepEqual(analyzed, { value: analysis, model: 'qwen/test' });
+assert.equal(sent[0].url, 'https://proj.supabase.co/functions/v1/ai');
+assert.equal(sent[0].options.method, 'POST');
+assert.equal(sent[0].options.headers.Authorization, 'Bearer jwt-123');
+assert.equal(sent[0].options.headers.apikey, 'sb_publishable_test');
+assert.equal(sent[0].options.headers['Content-Type'], 'application/json');
+const analyzeBody = JSON.parse(sent[0].options.body);
+assert.equal(analyzeBody.action, 'analyze');
+assert.equal(analyzeBody.text.length, LIMITS.text, 'long text is cut to the function limit');
+assert.equal(analyzeBody.tags.length, LIMITS.tags);
+assert.equal(validateAnalyze(analyzeBody).ok, true, 'what the app sends passes the function validation');
+assert.equal(JSON.stringify(analyzeBody).includes('gsk_'), false);
+assert.equal(Object.keys(analyzeBody).sort().join(), 'action,tags,text', 'no model, key or prompt comes from the app');
+
+reply(200, { model: 'm', analysis: { ...analysis, type: 'unknown' } });
+await assert.rejects(analyzeThought(client, 'hi', []), /Invalid AI response/);
+reply(200, { model: 'm' });
+await assert.rejects(analyzeThought(client, 'hi', []), /Invalid AI response/);
+
+const candidates = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, text: 'y'.repeat(LIMITS.candidateText + 50), title: i ? null : 'T' }));
+reply(200, { model: 'm', links: [{ candidate_id: 'c1', relation: 'follow-up', reason: ' Same trip. ' }, { candidate_id: 'c1', relation: 'follow-up', reason: 'dup' }] });
+const linked2 = await linkThought(client, 'Trip', candidates);
+assert.deepEqual(linked2.links, [{ candidate_id: 'c1', relation: 'follow-up', reason: 'Same trip.' }], 'duplicates dropped, reason trimmed');
+const linkBody = JSON.parse(sent.at(-1).options.body);
+assert.equal(linkBody.action, 'link');
+assert.equal(linkBody.candidates.length, LIMITS.candidates, 'at most 8 candidates');
+assert.equal(linkBody.candidates[1].text.length, LIMITS.candidateText);
+assert.deepEqual(Object.keys(linkBody.candidates[0]).sort(), ['id', 'text', 'title'], 'candidates carry no embeddings or strengths');
+assert.equal(validateLink(linkBody).ok, true);
+reply(200, { model: 'm', links: [{ candidate_id: 'unknown', relation: 'follow-up', reason: 'No.' }] });
+await assert.rejects(linkThought(client, 'Trip', candidates), /Invalid AI response/);
+reply(200, { model: 'm', links: [] });
+const callsBefore = sent.length;
+assert.deepEqual((await linkThought(client, 'Trip', [])).links, []);
+assert.equal(sent.length, callsBefore, 'no candidates, no call');
+
+reply(200, { model: 'whisper', text: ' hello ' });
+assert.equal(await transcribeAudio(client, new Blob(['audio'], { type: 'audio/mp4' })), ' hello ');
+const form = sent.at(-1).options.body;
+assert.equal(form.get('action'), 'transcribe');
+assert.ok(form.get('file') instanceof Blob);
+assert.equal(sent.at(-1).options.headers['Content-Type'], undefined, 'fetch must set the multipart boundary');
+assert.equal(sent.at(-1).options.headers.Authorization, 'Bearer jwt-123');
+reply(200, { nope: 1 });
+await assert.rejects(transcribeAudio(client, new Blob(['x'])), /Invalid AI response/);
+
+reply(200, { models: { chat: 'qwen/test', stt: 'whisper' }, daily_cap: 500 });
+assert.deepEqual(await aiInfo(client), { chat: 'qwen/test', stt: 'whisper' });
+assert.equal(sent.at(-1).options.method, 'GET');
+assert.equal(sent.at(-1).options.body, undefined);
+
+// Errors: short messages by code, never the body. A signed-out phone makes no request at all.
+reply(429, { error: { code: 'rate_limited', message: 'Daily AI limit reached. Try again tomorrow.' } });
+await assert.rejects(transcribeAudio(client, new Blob(['x'])), (error) => error instanceof AiError && error.code === 'rate_limited' && error.message === 'Daily AI limit reached');
+reply(401, '<html>Invalid JWT</html>');
+await assert.rejects(analyzeThought(client, 'hi', []), (error) => error instanceof AiError && error.code === 'unauthorized' && error.message === 'Sign in again');
+reply(502, { error: { code: 'upstream_failed', message: 'x' } });
+await assert.rejects(analyzeThought(client, 'hi', []), (error) => error.code === 'upstream_failed' && error.message === 'AI service busy');
+reply(500, '<html>boom</html>');
+await assert.rejects(analyzeThought(client, 'hi', []), (error) => error.message === 'AI HTTP 500');
+const before = sent.length;
+await assert.rejects(analyzeThought({ ...client, getToken: async () => null }, 'hi', []), (error) => error instanceof AiError && error.code === 'unauthorized');
+assert.equal(sent.length, before, 'signed out: no request');
+
+// The same rules the function applies to what arrives.
+assert.equal(validateAnalyze({ text: '  ' }).ok, false);
+assert.deepEqual(validateAnalyze({ text: ' hi ', tags: ['ok-tag', 'Bad Tag', 'x'.repeat(41)] }).value, { text: 'hi', tags: ['ok-tag'] });
+assert.equal(validateLink({ text: 'hi', candidates: Array.from({ length: 9 }, (_, i) => ({ id: `c${i}`, text: 'x' })) }).ok, false, 'more than 8 candidates');
+assert.equal(validateLink({ text: 'hi', candidates: [{ id: 'a', text: 'x' }, { id: 'a', text: 'y' }] }).ok, false, 'duplicate candidate ids');
+assert.equal(validateAudio(new Blob([new Uint8Array(LIMITS.audioBytes + 1)])).ok, false, 'audio over the cap');
+assert.equal(validateAudio(new Blob([])).ok, false);
+assert.equal(validateAudio('not a file').ok, false);
+assert.equal(validateAudio(new Blob(['ok'])).ok, true);
+globalThis.fetch = realFetch;
+
+// Shared text normalisation.
+assert.equal(shareText({ text: 'https://example.com/a', meta: { title: 'Great article' } }), 'Great article\nhttps://example.com/a');
+assert.equal(shareText({ text: 'Great article https://example.com/a', meta: { title: 'Great article' } }), 'Great article https://example.com/a', 'subject already in text is not repeated');
+assert.equal(shareText({ text: '  \n spaced out \t ' }), 'spaced out');
+assert.equal(shareText({ text: '', webUrl: ' https://example.com ' }), 'https://example.com');
+assert.equal(shareText({ text: null, meta: { title: ' Only a title ' } }), 'Only a title');
+assert.equal(shareText({ text: 'x'.repeat(MAX_SHARE_CHARS + 500) }).length, MAX_SHARE_CHARS);
+assert.equal(MAX_SHARE_CHARS, 2000);
+assert.equal(shareText({ text: 'a'.repeat(MAX_SHARE_CHARS - 1) + '😀' }), 'a'.repeat(MAX_SHARE_CHARS - 1), 'cap never splits an emoji');
+for (const empty of [undefined, {}, { text: '   ' }, { text: '', webUrl: null, meta: { title: '  ' } }, { text: null, meta: null }]) assert.equal(shareText(empty), '', 'empty share ignored');
 
 console.log('selfcheck ok');

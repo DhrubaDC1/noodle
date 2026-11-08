@@ -1,0 +1,5 @@
+# Supabase CLI state and local secrets
+.branches
+.temp
+.env
+functions/.env
