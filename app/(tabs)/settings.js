@@ -7,9 +7,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { aiInfo } from '../../src/ai';
 import { aiClient, signOut, useSession } from '../../src/auth';
+import { getSyncState, setSyncState } from '../../src/db';
 import { NoodleMark } from '../../src/icons';
 import { embeddingModelStatus } from '../../src/embeddingModel';
 import { kickAnalysis } from '../../src/queue';
+import { SYNC_ENABLED, syncNow } from '../../src/syncRunner';
+import { listTime } from '../../src/ui';
 import { font, radius, sticker, type, useTheme } from '../../src/theme';
 
 export const REMINDERS_SETTING = 'suggest_reminders';
@@ -17,7 +20,7 @@ const AI_MODEL_CACHE = 'ai_model'; // last model name the function reported, sho
 
 function TileIcon({ name, color }) {
   return <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-    {name === 'user' ? <><Circle cx="12" cy="8" r="4" /><Path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></> :
+    {name === 'cloud' ? <Path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.6 1.5A3.8 3.8 0 0 1 17.5 18Z" /> : name === 'user' ? <><Circle cx="12" cy="8" r="4" /><Path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></> :
       name === 'out' ? <Path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9" /> :
       name === 'model' ? <><Rect x="5" y="5" width="14" height="14" rx="3" /><Path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></> :
       name === 'share' ? <Path d="M12 3v12M8 7l4-4 4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /> :
@@ -33,20 +36,29 @@ export default function Settings() {
   const [aiModel, setAiModel] = useState(null);
   const [suggest, setSuggest] = useState(true);
   const [model, setModel] = useState(embeddingModelStatus);
+  const [sync, setSync] = useState({});
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener('embeddingModelChanged', setModel);
     return () => subscription.remove();
   }, []);
 
+  const loadSync = useCallback(() => { getSyncState(db).then(setSync).catch(() => {}); }, [db]);
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('syncChanged', (event) => { setSyncing(Boolean(event?.syncing)); loadSync(); });
+    return () => subscription.remove();
+  }, [loadSync]);
+
   const signedIn = Boolean(session);
   useFocusEffect(useCallback(() => {
     Storage.getItem(REMINDERS_SETTING).then((value) => setSuggest(value !== 'off')).catch(() => Alert.alert('Could not read setting'));
+    loadSync();
     Storage.getItem(AI_MODEL_CACHE).then((value) => value && setAiModel(value)).catch(() => {});
     if (!signedIn) return;
     // Ask the function which model it uses; this costs no AI call. Offline or failing: keep the cached name.
     aiInfo(aiClient).then((models) => { setAiModel(models.chat); return Storage.setItem(AI_MODEL_CACHE, models.chat); }).catch(() => {});
-  }, [signedIn]));
+  }, [signedIn, loadSync]));
 
   function confirmSignOut() {
     Alert.alert('Sign out?', 'Your thoughts stay on this phone. New ones wait for the AI until you sign in again.', [
@@ -54,6 +66,24 @@ export default function Settings() {
       { text: 'Sign out', style: 'destructive', onPress: () => signOut().catch(() => Alert.alert('Could not sign out')) },
     ]);
   }
+
+  const syncOn = sync[SYNC_ENABLED] === '1';
+  async function setSyncOn(on) {
+    try { await setSyncState(db, SYNC_ENABLED, on ? '1' : '0'); loadSync(); if (on) syncNow(); }
+    catch { Alert.alert('Could not change sync'); }
+  }
+  function toggleSync() {
+    if (syncOn) { setSyncOn(false); return; }
+    Alert.alert('Sync your thoughts?', 'Every thought on this phone is copied to your Noodle account, so your other phones can get it. Turning sync off later stops new copies; ones already saved stay on the server.', [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Sync', onPress: () => setSyncOn(true) },
+    ]);
+  }
+  const syncNote = !signedIn ? 'Sign in, then switch sync on to keep your thoughts on every phone.'
+    : !syncOn ? 'Off. Your thoughts stay on this phone.'
+    : syncing ? 'Syncing…'
+    : sync.last_error ? `Waiting: ${sync.last_error}. Tap to try again.`
+    : sync.last_synced ? `Synced ${listTime(Number(sync.last_synced))}. Tap to sync now.` : 'Getting ready…';
 
   async function toggleSuggest() {
     const next = !suggest;
@@ -115,6 +145,28 @@ export default function Settings() {
         </View>
       </View>
       <View style={styles.section}>
+        <Text style={[styles.heading, { color: c.text }]}>Backup and sync</Text>
+        <View style={[styles.group, sticker(c), { backgroundColor: c.surface }]}>
+          {signedIn ? (
+            <Pressable onPress={toggleSync} accessibilityRole="switch" accessibilityState={{ checked: syncOn }} style={styles.row}>
+              <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="cloud" color={c.text} /></View>
+              <Text style={[type.row, { color: c.text, flex: 1 }]}>Sync my thoughts</Text>
+              <View style={[styles.switch, { backgroundColor: syncOn ? c.ink : c.line }]}><View style={[styles.knob, { backgroundColor: c.idea, alignSelf: syncOn ? 'flex-end' : 'flex-start' }]} /></View>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => router.push('/sign-in')} accessibilityRole="button" style={styles.row}>
+              <View style={[styles.tile, { backgroundColor: c.sunken }]}><TileIcon name="cloud" color={c.text} /></View>
+              <Text style={[type.row, { color: c.text, flex: 1 }]}>Sign in to sync</Text>
+              <Text style={[styles.value, { color: c.muted }]}>Off</Text>
+              <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+            </Pressable>
+          )}
+        </View>
+        <Pressable disabled={!syncOn || syncing} onPress={syncNow} accessibilityRole="button" style={styles.syncNote}>
+          <Text style={[styles.note, { color: c.muted, marginHorizontal: 0 }]}>{syncNote}</Text>
+        </Pressable>
+      </View>
+      <View style={styles.section}>
         <Text style={[styles.heading, { color: c.text }]}>Sharing</Text>
         <View style={[styles.group, sticker(c), { backgroundColor: c.surface }]}>
           <Pressable disabled={Platform.OS !== 'android'} accessibilityRole="button" accessibilityState={{ disabled: Platform.OS !== 'android' }}
@@ -140,5 +192,6 @@ const styles = StyleSheet.create({
   switch: { width: 52, height: 32, borderRadius: 16, padding: 4 }, knob: { width: 24, height: 24, borderRadius: 12 },
   footer: { marginTop: 4, alignItems: 'center', gap: 4 }, footerText: { fontFamily: font.figtree600, fontSize: 12 },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
+  syncNote: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   email: { flex: 1, textAlign: 'right' },
 });

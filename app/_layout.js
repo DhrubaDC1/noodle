@@ -12,6 +12,7 @@ import { AuthProvider } from '../src/auth';
 import { migrate } from '../src/db';
 import { fontAssets } from '../src/theme';
 import AnalysisRunner from '../src/queue';
+import SyncRunner from '../src/syncRunner';
 import * as Notifications from 'expo-notifications';
 
 Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }) });
@@ -35,6 +36,7 @@ export default function RootLayout() {
       <AuthProvider>
         <SQLiteProvider databaseName="thoughts.db" onInit={migrate}>
           <AnalysisRunner />
+          <SyncRunner />
           <StatusBar style="auto" />
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

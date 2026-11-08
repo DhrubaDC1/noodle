@@ -27,7 +27,7 @@ import { clock, voiceState } from '../../src/transcribe';
 import { ArchiveIcon, BellIcon, ChevronIcon, DoneIcon, MapIcon, MicIcon, ReopenIcon, TrashIcon } from '../../src/icons';
 import { BarButton, Empty, SectionTitle, TypePill, moment, reminderTime, reminderSuggestion, tagsOf, thoughtTypes } from '../../src/ui';
 import { font, radius, sticker, type, useTheme } from '../../src/theme';
-import { analysisChanged, kickAnalysis } from '../../src/queue';
+import { analysisChanged, kickAnalysis, localChanged } from '../../src/queue';
 
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RELATION_LABELS = { 'same-project': 'Same project', 'follow-up': 'Follow-up', 'similar-idea': 'Similar idea', contradicts: 'Contradicts' };
@@ -80,6 +80,7 @@ export default function ThoughtScreen() {
   async function apply(action) {
     try {
       await action();
+      localChanged();
       router.back();
     } catch (e) {
       Alert.alert('Could not update', String(e?.message ?? e));

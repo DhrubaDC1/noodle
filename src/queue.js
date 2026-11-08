@@ -13,6 +13,8 @@ import { finalError, runTranscribe } from './transcribe';
 import { LIMITS } from '../supabase/functions/ai/core';
 
 export function kickAnalysis() { DeviceEventEmitter.emit('analysisKick'); }
+// A change made on this phone that sync should send (delete, done, archive).
+export function localChanged() { DeviceEventEmitter.emit('localChanged'); }
 export function analysisChanged() { DeviceEventEmitter.emit('analysisChanged'); }
 export function embeddingChanged() { DeviceEventEmitter.emit('embeddingChanged'); }
 

@@ -27,7 +27,7 @@ assert.equal(T.toFtsQuery('  ?? '), '');
 
 await T.migrate(db);
 await T.migrate(db); // second run must be a no-op
-assert.equal((await db.getFirstAsync('PRAGMA user_version')).user_version, 4);
+assert.equal((await db.getFirstAsync('PRAGMA user_version')).user_version, 5);
 assert.equal((await db.getFirstAsync("SELECT COUNT(*) AS count FROM jobs")).count, 0);
 
 await T.addThought(db, 'a', 'Build a budgeting app for tracking spending');
@@ -138,13 +138,14 @@ const oldDb = {
   },
 };
 await T.migrate(oldDb);
-assert.equal((await oldDb.getFirstAsync('PRAGMA user_version')).user_version, 4);
+assert.equal((await oldDb.getFirstAsync('PRAGMA user_version')).user_version, 5);
 assert.equal((await T.searchThoughts(oldDb, 'older'))[0].id, 'old');
 assert.equal((await oldDb.getFirstAsync('SELECT COUNT(*) AS count FROM jobs')).count, 3, 'old thought queued for every job');
 
 const v2raw = new DatabaseSync(':memory:');
 v2raw.exec(`CREATE TABLE thoughts (seq INTEGER PRIMARY KEY, id TEXT UNIQUE, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'typed', status TEXT NOT NULL DEFAULT 'open', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE jobs (id TEXT PRIMARY KEY, thought_id TEXT NOT NULL, kind TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_try_at INTEGER NOT NULL, last_error TEXT, UNIQUE(thought_id,kind));
+  CREATE TABLE analysis (thought_id TEXT PRIMARY KEY, title TEXT NOT NULL, type TEXT NOT NULL, tags TEXT NOT NULL, entities TEXT NOT NULL, reminder_at TEXT, model TEXT NOT NULL, analyzed_at INTEGER NOT NULL, type_override TEXT, tags_override TEXT, reminder_state TEXT NOT NULL DEFAULT 'suggested', notification_id TEXT);
   INSERT INTO thoughts(id,text,created_at,updated_at) VALUES('phase2','Track my spending',1,1);
   PRAGMA user_version = 2;`);
 const v2db = {
@@ -160,7 +161,7 @@ const v2db = {
 };
 await T.migrate(v2db);
 await T.migrate(v2db);
-assert.equal((await v2db.getFirstAsync('PRAGMA user_version')).user_version, 4);
+assert.equal((await v2db.getFirstAsync('PRAGMA user_version')).user_version, 5);
 assert.deepEqual((await v2db.getAllAsync("SELECT kind FROM jobs ORDER BY kind")).map((row) => row.kind), ['embed', 'link']);
 await T.addThought(v2db, 'new', 'A related thought');
 const firstLinkJob = await v2db.getFirstAsync("SELECT j.*, t.text FROM jobs j JOIN thoughts t ON t.id = j.thought_id WHERE j.thought_id = 'new' AND j.kind = 'link'");
@@ -217,17 +218,20 @@ const p4raw = new DatabaseSync(':memory:');
 const p4 = adapt(p4raw);
 await T.migrate(p4);
 await T.addThought(p4, 'kept', 'A phase four thought');
-p4raw.exec('ALTER TABLE thoughts DROP COLUMN audio_path; ALTER TABLE thoughts DROP COLUMN audio_ms; PRAGMA user_version = 3;');
+p4raw.exec('DROP TABLE sync_state; DROP INDEX thoughts_updated; DROP INDEX analysis_updated; DROP INDEX links_updated; ALTER TABLE analysis DROP COLUMN updated_at; ALTER TABLE links DROP COLUMN updated_at; ALTER TABLE thoughts DROP COLUMN audio_path; ALTER TABLE thoughts DROP COLUMN audio_ms; PRAGMA user_version = 3;');
 assert.ok(!(await columns(p4)).includes('audio_path'), 'test DB looks like phase 4');
 const jobsBefore = (await p4.getFirstAsync('SELECT COUNT(*) AS count FROM jobs')).count;
+p4raw.exec("INSERT INTO thoughts(id,text,created_at,updated_at) VALUES('kept2','x',1,1); INSERT INTO analysis(thought_id,title,type,tags,entities,model,analyzed_at) VALUES('kept','T','idea','[]','[]','m',777); INSERT INTO links(id,from_id,to_id,relation,reason,strength,created_at) VALUES('l','kept','kept2','follow-up','r',0.5,888)");
 await T.migrate(p4);
 await T.migrate(p4);
-assert.equal((await p4.getFirstAsync('PRAGMA user_version')).user_version, 4);
+assert.equal((await p4.getFirstAsync('PRAGMA user_version')).user_version, 5);
 assert.ok((await columns(p4)).includes('audio_path') && (await columns(p4)).includes('audio_ms'));
 assert.equal((await T.getThought(p4, 'kept')).audio_path, null);
 assert.equal((await T.getThought(p4, 'kept')).text, 'A phase four thought');
 assert.equal((await p4.getFirstAsync('SELECT COUNT(*) AS count FROM jobs')).count, jobsBefore, 'no jobs added by migration');
 assert.equal(voiceState(await T.getThought(p4, 'kept')), null);
+assert.equal((await p4.getFirstAsync("SELECT updated_at FROM analysis WHERE thought_id = 'kept'")).updated_at, 777, 'migration 5 backfills analysis.updated_at');
+assert.equal((await p4.getFirstAsync("SELECT updated_at FROM links WHERE id = 'l'")).updated_at, 888, 'and links.updated_at');
 
 // Job ordering: a voice thought only has a transcribe job until transcription succeeds.
 await T.addVoiceThought(db, 'v1', 'ExpoAudio/voice-v1.m4a', 42000);
@@ -392,5 +396,7 @@ assert.equal(shareText({ text: 'x'.repeat(MAX_SHARE_CHARS + 500) }).length, MAX_
 assert.equal(MAX_SHARE_CHARS, 2000);
 assert.equal(shareText({ text: 'a'.repeat(MAX_SHARE_CHARS - 1) + '😀' }), 'a'.repeat(MAX_SHARE_CHARS - 1), 'cap never splits an emoji');
 for (const empty of [undefined, {}, { text: '   ' }, { text: '', webUrl: null, meta: { title: '  ' } }, { text: null, meta: null }]) assert.equal(shareText(empty), '', 'empty share ignored');
+
+await import('./synccheck.mjs');
 
 console.log('selfcheck ok');

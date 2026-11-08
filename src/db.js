@@ -129,6 +129,21 @@ export async function migrate(db) {
       PRAGMA user_version = 4;
     `);
   });
+  // Sync (phase 6 pass B): analysis and links get updated_at; links.deleted = 2 means "replaced by a
+  // re-analysis" (1 stays "removed by the user"); sync_state holds the cursors and the on/off switch.
+  if (user_version < 5) await db.withExclusiveTransactionAsync(async (tx) => {
+    await tx.execAsync(`
+      ALTER TABLE analysis ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+      UPDATE analysis SET updated_at = analyzed_at;
+      ALTER TABLE links ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+      UPDATE links SET updated_at = created_at;
+      CREATE INDEX thoughts_updated ON thoughts(updated_at);
+      CREATE INDEX analysis_updated ON analysis(updated_at);
+      CREATE INDEX links_updated ON links(updated_at);
+      CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      PRAGMA user_version = 5;
+    `);
+  });
 }
 
 export async function addThought(db, id, text, source = 'typed') {
@@ -298,7 +313,7 @@ export function getLinkedThoughts(db, id) {
 }
 
 export function removeLink(db, linkId) {
-  return db.runAsync('UPDATE links SET deleted = 1 WHERE id = ? AND deleted = 0', linkId);
+  return db.runAsync('UPDATE links SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0', Date.now(), linkId);
 }
 
 export async function saveLinks(db, job, candidates, chosen) {
@@ -306,14 +321,19 @@ export async function saveLinks(db, job, candidates, chosen) {
   await db.withExclusiveTransactionAsync(async (tx) => {
     const current = await tx.getFirstAsync("SELECT t.text, j.id FROM thoughts t JOIN jobs j ON j.thought_id = t.id AND j.kind = 'link' WHERE t.id = ? AND t.deleted = 0", job.thought_id);
     if (!current || current.id !== job.id || current.text !== job.text) return;
-    if (job.refresh) await tx.runAsync('DELETE FROM links WHERE deleted = 0 AND (from_id = ? OR to_id = ?)', job.thought_id, job.thought_id);
+    // A re-analysis replaces this thought's links. Soft (deleted = 2, not 1) so the replacement syncs.
+    if (job.refresh) await tx.runAsync('UPDATE links SET deleted = 2, updated_at = ? WHERE deleted = 0 AND (from_id = ? OR to_id = ?)', Date.now(), job.thought_id, job.thought_id);
     for (const link of chosen) {
       const candidate = candidates.find((row) => row.id === link.candidate_id);
       if (!candidate) continue;
       const stillCurrent = await tx.getFirstAsync('SELECT text FROM thoughts WHERE id = ? AND deleted = 0', candidate.id);
       if (!stillCurrent || stillCurrent.text !== candidate.text) continue;
-      await tx.runAsync(`INSERT OR IGNORE INTO links(id,from_id,to_id,relation,reason,strength,created_at)
-        VALUES(?,?,?,?,?,?,?)`, link.id, job.thought_id, candidate.id, link.relation, link.reason, candidate.strength, Date.now());
+      const now = Date.now();
+      const revived = await tx.runAsync(`UPDATE links SET deleted = 0, from_id = ?, to_id = ?, relation = ?, reason = ?, strength = ?, updated_at = ?
+        WHERE deleted = 2 AND min(from_id, to_id) = min(?, ?) AND max(from_id, to_id) = max(?, ?)`,
+      job.thought_id, candidate.id, link.relation, link.reason, candidate.strength, now, job.thought_id, candidate.id, job.thought_id, candidate.id);
+      if (!revived.changes) await tx.runAsync(`INSERT OR IGNORE INTO links(id,from_id,to_id,relation,reason,strength,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?)`, link.id, job.thought_id, candidate.id, link.relation, link.reason, candidate.strength, now, now);
     }
     await tx.runAsync('DELETE FROM jobs WHERE id = ?', job.id);
     saved = true;
@@ -333,13 +353,14 @@ export async function saveAnalysis(db, job, value, model) {
     const current = await tx.getFirstAsync(`SELECT t.text, j.id FROM thoughts t JOIN jobs j ON j.thought_id = t.id
       WHERE t.id = ? AND t.deleted = 0 AND j.kind = 'analyze'`, job.thought_id);
     if (!current || current.id !== job.id || current.text !== job.text) return;
-    await tx.runAsync(`INSERT INTO analysis(thought_id,title,type,tags,entities,reminder_at,model,analyzed_at)
-      VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(thought_id) DO UPDATE SET
+    const now = Date.now();
+    await tx.runAsync(`INSERT INTO analysis(thought_id,title,type,tags,entities,reminder_at,model,analyzed_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(thought_id) DO UPDATE SET
       title=excluded.title, type=COALESCE(analysis.type_override, excluded.type),
       tags=COALESCE(analysis.tags_override, excluded.tags), entities=excluded.entities,
-      reminder_at=excluded.reminder_at, model=excluded.model, analyzed_at=excluded.analyzed_at,
+      reminder_at=excluded.reminder_at, model=excluded.model, analyzed_at=excluded.analyzed_at, updated_at=excluded.updated_at,
       reminder_state=CASE WHEN analysis.reminder_at IS NOT excluded.reminder_at AND analysis.notification_id IS NULL THEN 'suggested' ELSE analysis.reminder_state END`,
-    job.thought_id, value.title, value.type, JSON.stringify(value.tags), JSON.stringify(value.entities), value.reminder_at, model, Date.now());
+    job.thought_id, value.title, value.type, JSON.stringify(value.tags), JSON.stringify(value.entities), value.reminder_at, model, now, now);
     await tx.runAsync('DELETE FROM jobs WHERE id = ?', job.id);
     saved = true;
   });
@@ -347,11 +368,138 @@ export async function saveAnalysis(db, job, value, model) {
 }
 
 export function editAnalysis(db, id, field, value) {
-  if (field === 'type') return db.runAsync('UPDATE analysis SET type = ?, type_override = ? WHERE thought_id = ?', value, value, id);
-  if (field === 'tags') return db.runAsync('UPDATE analysis SET tags = ?, tags_override = ? WHERE thought_id = ?', JSON.stringify(value), JSON.stringify(value), id);
+  if (field === 'type') return db.runAsync('UPDATE analysis SET type = ?, type_override = ?, updated_at = ? WHERE thought_id = ?', value, value, Date.now(), id);
+  if (field === 'tags') return db.runAsync('UPDATE analysis SET tags = ?, tags_override = ?, updated_at = ? WHERE thought_id = ?', JSON.stringify(value), JSON.stringify(value), Date.now(), id);
   throw new Error('Invalid analysis field');
 }
 
 export function setReminderState(db, id, state, notificationId = null) {
   return db.runAsync('UPDATE analysis SET reminder_state = ?, notification_id = ? WHERE thought_id = ?', state, notificationId, id);
+}
+
+// ---------------------------------------------------------------- sync (driven by src/sync.js)
+
+export async function getSyncState(db) {
+  return Object.fromEntries((await db.getAllAsync('SELECT key, value FROM sync_state')).map((row) => [row.key, row.value]));
+}
+
+export function setSyncState(db, key, value) {
+  if (value === null) return db.runAsync('DELETE FROM sync_state WHERE key = ?', key);
+  return db.runAsync('INSERT INTO sync_state(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, String(value));
+}
+
+// A different account signed in: forget where we were, so this phone's data goes to the new account.
+export async function resetSync(db, userId) {
+  await db.runAsync("DELETE FROM sync_state WHERE key != 'enabled'");
+  await setSyncState(db, 'user', userId);
+}
+
+export const SYNC_KEY = { thoughts: 'id', analysis: 'thought_id', links: 'id' };
+const PUSH_SQL = {
+  // A voice note not yet transcribed stays on this phone (no text, and the audio never syncs).
+  thoughts: 'SELECT id, text, source, status, created_at, updated_at, deleted FROM thoughts WHERE audio_path IS NULL AND (updated_at, id) > (?, ?) ORDER BY updated_at, id LIMIT ?',
+  analysis: `SELECT a.thought_id, a.title, a.type, a.tags, a.entities, a.reminder_at, a.model, a.analyzed_at, a.type_override, a.tags_override, a.updated_at
+    FROM analysis a JOIN thoughts t ON t.id = a.thought_id WHERE t.deleted = 0 AND (a.updated_at, a.thought_id) > (?, ?) ORDER BY a.updated_at, a.thought_id LIMIT ?`,
+  links: 'SELECT id, from_id, to_id, relation, reason, strength, created_at, updated_at, deleted FROM links WHERE (updated_at, id) > (?, ?) ORDER BY updated_at, id LIMIT ?',
+};
+
+// Rows changed after (updatedAt, key), oldest first.
+export function syncRows(db, table, updatedAt, key, limit) {
+  return db.getAllAsync(PUSH_SQL[table], updatedAt, key, limit);
+}
+
+const upsertJob = (tx, id, kind, at, replace) => tx.runAsync(
+  `INSERT INTO jobs(id, thought_id, kind, next_try_at) VALUES(lower(hex(randomblob(16))), ?, ?, ?)
+   ON CONFLICT(thought_id, kind) DO ${replace ? 'UPDATE SET id = excluded.id, attempts = 0, next_try_at = excluded.next_try_at, last_error = NULL' : 'NOTHING'}`, id, kind, at);
+
+// Last write wins: a remote row replaces the local one only when it is newer. Returns the ids of
+// thoughts that did not exist here (they get embedded; see queueMissingAnalysis for the rest).
+export async function applyRemoteThoughts(db, rows) {
+  const inserted = [];
+  let changed = 0;
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const r of rows) {
+      const local = await tx.getFirstAsync('SELECT updated_at, text, deleted FROM thoughts WHERE id = ?', r.id);
+      if (!local) {
+        if (r.deleted) continue;
+        await tx.runAsync('INSERT INTO thoughts (id, text, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', r.id, r.text, r.source, r.status, r.created_at, r.updated_at);
+        await upsertJob(tx, r.id, 'embed', 0, false);
+        inserted.push(r.id);
+        changed += 1;
+      } else if (r.updated_at > local.updated_at) {
+        if (r.deleted) {
+          await tx.runAsync('UPDATE thoughts SET deleted = 1, audio_path = NULL, updated_at = ? WHERE id = ?', r.updated_at, r.id);
+          await tx.runAsync('DELETE FROM jobs WHERE thought_id = ?', r.id);
+        } else {
+          await tx.runAsync('UPDATE thoughts SET text = ?, source = ?, status = ?, deleted = 0, updated_at = ? WHERE id = ?', r.text, r.source, r.status, r.updated_at, r.id);
+          if (local.text !== r.text || local.deleted) { // the vector belongs to the old text
+            await tx.runAsync('DELETE FROM embeddings WHERE thought_id = ?', r.id);
+            await upsertJob(tx, r.id, 'embed', 0, true);
+          }
+        }
+        changed += 1;
+      }
+    }
+  });
+  return { inserted, changed };
+}
+
+// reminder_state and notification_id stay per phone: a notification is scheduled on one device.
+export async function applyRemoteAnalysis(db, rows) {
+  let changed = 0;
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const r of rows) {
+      if (!(await tx.getFirstAsync('SELECT 1 FROM thoughts WHERE id = ? AND deleted = 0', r.thought_id))) continue;
+      const local = await tx.getFirstAsync('SELECT updated_at FROM analysis WHERE thought_id = ?', r.thought_id);
+      if (local && r.updated_at <= local.updated_at) continue;
+      const values = [r.title, r.type, JSON.stringify(r.tags), JSON.stringify(r.entities), r.reminder_at, r.model, r.analyzed_at, r.type_override, r.tags_override ? JSON.stringify(r.tags_override) : null, r.updated_at];
+      if (!local) await tx.runAsync(`INSERT INTO analysis(title,type,tags,entities,reminder_at,model,analyzed_at,type_override,tags_override,updated_at,thought_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, ...values, r.thought_id);
+      else await tx.runAsync(`UPDATE analysis SET reminder_state = CASE WHEN reminder_at IS NOT ? AND notification_id IS NULL THEN 'suggested' ELSE reminder_state END,
+        title=?, type=?, tags=?, entities=?, reminder_at=?, model=?, analyzed_at=?, type_override=?, tags_override=?, updated_at=? WHERE thought_id = ?`, r.reminder_at, ...values, r.thought_id);
+      await tx.runAsync("DELETE FROM jobs WHERE thought_id = ? AND kind = 'analyze'", r.thought_id); // another phone did it
+      changed += 1;
+    }
+  });
+  return changed;
+}
+
+// Two phones can link the same pair with different ids; the pair index keeps one row. A removal
+// made on the other phone still removes ours, so a removed link stays removed everywhere.
+export async function applyRemoteLinks(db, rows) {
+  let changed = 0;
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const r of rows) {
+      if (!(await tx.getFirstAsync('SELECT 1 FROM thoughts WHERE id = ?', r.from_id)) || !(await tx.getFirstAsync('SELECT 1 FROM thoughts WHERE id = ?', r.to_id))) continue;
+      const local = await tx.getFirstAsync('SELECT updated_at FROM links WHERE id = ?', r.id);
+      if (local) {
+        if (r.updated_at <= local.updated_at) continue;
+        await tx.runAsync('UPDATE links SET relation = ?, reason = ?, strength = ?, deleted = ?, updated_at = ? WHERE id = ?', r.relation, r.reason, r.strength, r.deleted, r.updated_at, r.id);
+        changed += 1;
+      } else if (r.deleted !== 2) {
+        const inserted = await tx.runAsync('INSERT OR IGNORE INTO links(id,from_id,to_id,relation,reason,strength,created_at,updated_at,deleted) VALUES(?,?,?,?,?,?,?,?,?)',
+          r.id, r.from_id, r.to_id, r.relation, r.reason, r.strength, r.created_at, r.updated_at, r.deleted);
+        if (inserted.changes) changed += 1;
+        else if (r.deleted === 1) {
+          const removed = await tx.runAsync(`UPDATE links SET deleted = 1, updated_at = ? WHERE deleted = 0 AND min(from_id, to_id) = min(?, ?) AND max(from_id, to_id) = max(?, ?)`, r.updated_at, r.from_id, r.to_id, r.from_id, r.to_id);
+          changed += removed.changes;
+        }
+      }
+    }
+  });
+  return changed;
+}
+
+// Thoughts that arrived without analysis: if the phone that saved them never analyses them (no
+// signal, no AI), this one does, but not before `at`, so the saving phone's own result can arrive first.
+export async function queueMissingAnalysis(db, ids, at) {
+  let queued = 0;
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const id of ids) {
+      if (!(await tx.getFirstAsync('SELECT 1 FROM thoughts t WHERE t.id = ? AND t.deleted = 0 AND NOT EXISTS (SELECT 1 FROM analysis a WHERE a.thought_id = t.id)', id))) continue;
+      await upsertJob(tx, id, 'analyze', at, false);
+      await upsertJob(tx, id, 'link', at, false);
+      queued += 1;
+    }
+  });
+  return queued;
 }

@@ -49,4 +49,10 @@ Runs the database layer and the AI request/response checks against Node's built-
 npm run test:function
 ```
 
-Tests the `ai` function's input checks, daily cap and error handling with fakes (Node 22+). The real counter is tested with `supabase test db` (needs Docker).
+Tests the `ai` function's input checks, daily cap and error handling with fakes (Node 22+).
+
+```bash
+npm run sqlcheck
+```
+
+Runs the Supabase migrations in an in-process Postgres (no Docker) and checks the cap, row-level security and sync. Sync logic itself is covered by `npm run selfcheck` (two simulated phones).

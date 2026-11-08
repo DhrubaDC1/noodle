@@ -20,7 +20,7 @@ Sources (claude.ai, for the owner; Claude Code reads the files below instead):
 | `design/screens/Thought.dc.html` | Thought detail: tinted header, tags, reminder card (phase 2), linked thoughts (phase 3), action bar |
 | `design/screens/MapTopics.dc.html` | Map, topic view (phase 4) |
 | `design/screens/MapThought.dc.html` | Map, one-thought view (phase 4) |
-| `design/screens/Settings.dc.html` | Settings. AI group shown signed in (Account, Sign out, Model); signed out it is one "Sign in · AI is off" row. Sync in phase 6 pass B |
+| `design/screens/Settings.dc.html` | Settings. AI group shown signed in (Account, Sign out, Model); signed out it is one "Sign in · AI is off" row. "Backup and sync" shows the signed-in state: one switch row "Sync my thoughts" and a status line (signed out: a "Sign in to sync · Off" row). "Export a backup" is not built yet (needs a native module) |
 | *(no mockup)* Sign in | Specified under "Sign in" below; built from the same parts as Capture and Settings |
 
 The `.dc.html` files are HTML mockups at 390×844 with inline styles. Read them as the spec: layout, sizes, copy, icon paths. Colours are CSS variables named like the tokens in camelCase (`--projectTint` = `project-tint`); the `light`/`dark` objects at the bottom of each file hold the values. Ignore the `<x-dc>`, `<helmet>` and `DCLogic` wrapper markup.
@@ -45,6 +45,10 @@ Optional email-code sign-in (`app/sign-in.js`), a modal opened from the Capture 
 - Signed out, Capture shows a muted underlined line under the compose box: "Sign in to switch on Noodle's AI" (44px tall, opens this screen). It replaces the old "Add your Groq key" hint.
 
 The Groq key is never on the phone: the app signs in to Supabase and calls the `ai` Edge Function, which holds the key.
+
+## Backup and sync
+
+One sticker group in Settings, after Reminders. Signed in: a switch row "Sync my thoughts" (cloud icon in a sunken tile, same switch as "Suggest reminders"). Turning it on asks first ("Sync your thoughts?"), because it copies every thought to the account. Under the group, a muted `note` line that is also a 44px button: "Off. Your thoughts stay on this phone.", "Syncing…", "Synced 5:12 pm. Tap to sync now." or "Waiting: No connection. Tap to try again." Signed out: one row "Sign in to sync · Off ›" that opens Sign in.
 
 ## React Native notes
 

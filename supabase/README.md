@@ -6,7 +6,7 @@ Sign-in (email code) and the `ai` Edge Function. The Groq key lives here, never 
 supabase/
   config.toml                 CLI + auth config (6-digit codes, email templates, function settings)
   templates/code.html         the email: shows {{ .Token }} (the code) instead of a link
-  migrations/                 ai_usage table + take_ai_call() (the daily cap)
+  migrations/                 ai_usage + take_ai_call() (the daily cap); thoughts, analysis, links + sync_push() (sync)
   functions/ai/               the Edge Function (JavaScript)
     config.js                 model IDs, Groq URL, timezone, default cap  <- change models here
     core.js                   limits + validators, shared with the app
@@ -98,6 +98,16 @@ npx eas-cli@latest env:create --environment development --name EXPO_PUBLIC_SUPAB
 
 The existing development build needs no rebuild for this change: no native module was added. Only a new EAS build needs the variables above.
 
+## Sync (pass B)
+
+After pulling the latest code, apply the sync migration to your project (it asks before applying; Docker is not needed):
+
+```bash
+npx supabase db push --remote
+```
+
+Nothing else to set up: sync uses the same sign-in. In the app, Settings > Backup and sync > Sync my thoughts. Server tables are `thoughts`, `analysis` and `links`; look at them in Dashboard > Table Editor.
+
 ## Tests
 
 ```bash
@@ -107,11 +117,12 @@ npm run test:function
 Input validation, the daily cap, auth and "never echo the key or Groq errors", with fakes (Node 22, no Docker).
 
 ```bash
-npx supabase start
-npx supabase test db
+npm run sqlcheck
 ```
 
-The real counter (`take_ai_call`: cap, refused calls not counted, per-user, app cannot call it) against a local Postgres. Needs Docker.
+Runs every migration in PGlite (Postgres in WebAssembly, no Docker) with stand-ins for Supabase's roles and `auth.uid()`: the daily cap (`take_ai_call`), row-level security, and `sync_push` (newer wins, tombstones, per-user rows, batch limits, who may call what).
+
+With Docker, the same SQL has a pgTAP test for the cap on the real stack: `npx supabase start`, then `npx supabase test db`.
 
 ## Run the function locally
 
