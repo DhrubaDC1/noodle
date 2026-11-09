@@ -20,7 +20,10 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.dhruba.noodle"
+      "package": "com.dhruba.noodle",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -82,6 +85,9 @@
       "eas": {
         "projectId": "11d9bdbc-e83c-4fc0-ac62-ec9c23fc104e"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/11d9bdbc-e83c-4fc0-ac62-ec9c23fc104e"
     }
   }
 }
