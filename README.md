@@ -1,58 +1,135 @@
-# Thoughts
+<div align="center">
 
-Capture a thought in seconds, find it later. Expo (JavaScript), SDK 58.
+<img src="docs/design/system/noodle-app-icon.svg" width="112" alt="Noodle app icon" />
 
-## Run it
+# noodle
+
+**What's on your noodle?**
+
+Type a thought in two seconds. Noodle tags it, links it to your older thoughts, and lets you find it later by search or mind map.<br>
+Works offline. Lives on your phone. Open source.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-FFC53D.svg)](LICENSE)
+![Expo SDK 58](https://img.shields.io/badge/Expo-SDK%2058-1E1B2E)
+![JavaScript only](https://img.shields.io/badge/JavaScript-no%20TypeScript-9580FF)
+![iOS and Android](https://img.shields.io/badge/iOS%20%2B%20Android-1FB89A)
+
+[**Download the APK**](https://github.com/DhrubaDC1/noodle/releases/latest) · [How it works](#how-it-works) · [Run it yourself](#run-it-yourself) · [Self-host the AI](supabase/README.md)
+
+</div>
+
+<!--
+Screenshots: drop PNGs in docs/screenshots/ and uncomment.
+
+<p align="center">
+  <img src="docs/screenshots/capture.png" width="23%" />
+  <img src="docs/screenshots/search.png" width="23%" />
+  <img src="docs/screenshots/thought.png" width="23%" />
+  <img src="docs/screenshots/map.png" width="23%" />
+</p>
+-->
+
+## Why noodle
+
+Notes apps want you to file things. Your head doesn't work in folders. Noodle skips the filing:
+
+- **Capture first.** The app opens to a text box. Saving is instant and never waits on the network, the AI or a login.
+- **It files itself.** In the background an LLM gives each thought a title, a type (idea, project, to-do, memory, question), topics, and any time you mentioned.
+- **It connects the dots.** "Budgeting app idea" finds the old note that only says "track my spending", and tells you *why* they are related.
+- **Find it however you remember it.** Keyword search, search by meaning, topic bubbles, or a mind map centred on one thought.
+
+## Features
+
+| | |
+| --- | --- |
+| **Local-first, offline** | Everything lives in SQLite on your phone. No signal, no problem. AI work waits in a retrying queue and catches up later. |
+| **AI tags and links** | Title, type, tags and reminder suggestions per thought. Related thoughts come with a one-line reason ("same project", "follow-up", "contradicts"). |
+| **Search two ways** | SQLite FTS5 keyword search plus on-device embeddings (all-MiniLM-L6-v2) for "similar in meaning". |
+| **Mind map** | Topic view (bubbles sized by count) or thought view (one thought and its links). Pan, zoom, tap to re-centre. |
+| **Voice and share** | Speak a thought (Whisper). On Android, share text from any app straight into Noodle. |
+| **Reminders** | The AI suggests "Remind me Fri 6 pm?" and one tap schedules it. Nothing is set without you. |
+| **Private by design** | Signing in is optional. Sync is a separate opt-in switch. Sign out and your thoughts stay. No API key ever ships in the app. |
+| **Dark mode, no clutter** | Follows your system. Sticker-style UI, one colour per thought type. |
+
+## How it works
+
+```mermaid
+flowchart LR
+  A[Capture screen] -->|instant save| B[(SQLite on phone)]
+  B --> C[Job queue<br/>retries offline]
+  C --> D[On-device embedding<br/>MiniLM]
+  C -->|your JWT| E[Edge Function 'ai']
+  E -->|server-side key| F[Groq<br/>analyze / link / transcribe]
+  B <-.->|opt-in sync| G[(Supabase Postgres)]
+```
+
+1. **Embed** on the phone: a 384-number vector per thought.
+2. **Analyze** through the `ai` Edge Function: one call returns title, type, tags and an optional reminder.
+3. **Link**: cosine similarity picks the 8 closest older thoughts, then the LLM confirms which are truly related and names the link. The whole history is never sent to the model.
+
+The Groq key is a Supabase secret read only by the function. The app signs in with an email code and calls the function with your session. Each account is capped at 500 AI calls per day.
+
+**Privacy, plainly:** with AI on (signed in), the text of a thought is sent to Groq to be tagged and linked. Signed out, nothing leaves your phone. Sync copies thoughts, tags and links to your Supabase account only if you switch it on; embeddings, audio and jobs never sync.
+
+Full design and decisions: [docs/PLAN.md](docs/PLAN.md). Look and feel: [docs/DESIGN.md](docs/DESIGN.md).
+
+## Install
+
+**Android:** download the APK from [Releases](https://github.com/DhrubaDC1/noodle/releases/latest), open it, and allow installs from your browser if asked.
+
+**iOS:** build it yourself for now (below). Sharing an IPA needs an Apple Developer account and registered devices.
+
+## Run it yourself
+
+Noodle needs a development build, not Expo Go, because on-device embeddings use native code.
 
 ```bash
+git clone https://github.com/DhrubaDC1/noodle.git
+cd noodle
 npm install
-npx expo start
+cp .env.local.example .env.local   # add your Supabase URL and publishable key
+npx expo run:android               # or: npx expo run:ios
 ```
 
-For Expo Go, press `s` in the Expo terminal if needed to switch the QR code to Expo Go.
+Without `.env.local` the app still captures and does keyword search; the AI features need a Supabase project.
 
-## Android development build
-
-The development build lets the app use native libraries in phase 3. Confirm the current app works in it before adding `react-native-executorch`.
-
-1. Sign in to an Expo account: `npx eas-cli@latest login` (skip if already signed in).
-2. Build the installable APK: `npx eas-cli@latest build --platform android --profile development`. On the first build, accept or choose the Android application ID and let EAS generate an Android keystore. EAS may also link this project to your Expo account and update `app.json`.
-3. When the build finishes, open its Expo build page on your Android phone. Tap **Install**, download the APK, and open it to install. Allow your browser to install apps if Android asks. Keep Expo Go installed; this is a separate app.
-4. Connect phone and computer to the same Wi-Fi. Run `npx expo start --dev-client`, then scan the terminal QR code with your phone camera. Open the link in the installed development build. You can also open the build from your home screen and select the running development server.
-5. Compare with Expo Go: launch without errors; capture a thought; find it in Search; edit, archive, and delete a test thought; open Map and Settings; set a reminder and verify its notification. To verify analysis, sign in (Settings > Sign in) once Supabase is set up (see "Supabase" below). Data and the session in Expo Go do not automatically move into the development build.
-
-Do not add `react-native-executorch` until this phone check passes. Rebuild the development build whenever a native dependency or native app configuration changes; JavaScript changes only need the development server.
-
-## Supabase (AI and sign-in)
-
-AI runs through the `ai` Edge Function in `supabase/`; the Groq key lives only there. Without signing in, the app still captures and searches by keyword. Setup, step by step: `supabase/README.md`. Copy `.env.local.example` to `.env.local` and fill in your project URL and publishable key.
-
-## What's here (phase 1)
-
-- `app/(tabs)/index.js`: capture screen and recent thoughts
-- `app/(tabs)/search.js`: keyword search (SQLite FTS5, prefix matching)
-- `app/thought/[id].js`: edit, mark done, archive, delete
-- `src/db.js`: schema, migrations and every query
-- `src/ui.js`: colours and shared components
-
-Deletes are soft (`deleted = 1`) and every row has a UUID and timestamps, so sync can be added later without a schema rewrite.
-
-## Check
+**Release APK on a low-RAM machine:**
 
 ```bash
-npm run selfcheck
+cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-parallel --max-workers=2 --no-daemon
 ```
 
-Runs the database layer and the AI request/response checks against Node's built-in SQLite (Node 22+).
+The APK lands in `android/app/build/outputs/apk/release/`.
+
+### Self-host the AI
+
+Create a free Supabase project, push the migrations, and set your own Groq key as a secret. Step by step: [supabase/README.md](supabase/README.md). Model IDs live in one file, `supabase/functions/ai/config.js`.
+
+## Tech
+
+Expo SDK 58 · expo-router · expo-sqlite (FTS5) · react-native-executorch · react-native-svg + d3-force · expo-audio · expo-notifications · Supabase (Auth, Postgres, Edge Functions) · Groq (`qwen/qwen3.8-27b`, `whisper-large-v3-turbo`). JavaScript only, no TypeScript.
+
+## Checks
 
 ```bash
-npm run test:function
+npm run selfcheck      # database layer, AI request checks, two-phone sync simulation
+npm run test:function  # the ai Edge Function: validation, daily cap, errors
+npm run sqlcheck       # Supabase migrations in Postgres (PGlite, no Docker)
 ```
 
-Tests the `ai` function's input checks, daily cap and error handling with fakes (Node 22+).
+Node 22+.
 
-```bash
-npm run sqlcheck
-```
+## Roadmap
 
-Runs the Supabase migrations in an in-process Postgres (no Docker) and checks the cap, row-level security and sync. Sync logic itself is covered by `npm run selfcheck` (two simulated phones).
+- [ ] iOS share-from-other-apps
+- [ ] Export a backup
+- [ ] "Delete my cloud data" button
+- [ ] Server-assigned versions for sync conflicts
+
+## Contributing
+
+Issues and pull requests are welcome. Read [docs/DESIGN.md](docs/DESIGN.md) first: when code and design disagree, the design wins.
+
+## License
+
+[MIT](LICENSE) © 2026 Dhruba Chakraborty
